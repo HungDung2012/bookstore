@@ -1,0 +1,74 @@
+{% extends 'base.html' %}
+
+{% block title %}Book Catalog | Microstore{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Discover Your Next Read</h1>
+    <p>Explore our wide collection of books</p>
+    {% if user and user.role != 'customer' %}
+    <a href="/books/create/" class="action-btn" style="display: inline-flex; width: auto; margin-top: 1rem; gap: 0.5rem;">
+        <i class="fa-solid fa-plus"></i> Add New Book
+    </a>
+    {% endif %}
+</div>
+
+<div class="grid">
+    {% for book in books %}
+    <div class="glass-card">
+        <div class="card-header">
+            <div>
+                <a href="/books/{{ book.id }}/" style="text-decoration:none; color:inherit;"><h3 class="card-title">{{ book.title }}</h3></a>
+                <p class="card-subtitle"><i class="fa-solid fa-feather"></i> {{ book.author }}</p>
+            </div>
+            <div class="price-tag">${{ book.price }}</div>
+        </div>
+        
+        <div class="card-body">
+            <span class="stock-badge">
+                <i class="fa-solid fa-box"></i> {{ book.stock }} in stock
+            </span>
+            {% if book.rating %}
+            <span class="stock-badge" style="background:rgba(234,179,8,0.1); color:#facc15; border-color:rgba(234,179,8,0.2);">
+                <i class="fa-solid fa-star"></i> {{ book.rating.average_rating }}/5
+            </span>
+            {% endif %}
+        </div>
+        
+        <div class="card-actions">
+            {% if user %}
+            <form method="post" action="/cart/add/" style="flex:1;">
+                <input type="hidden" name="book_id" value="{{ book.id }}">
+                <input type="hidden" name="quantity" value="1">
+                <button type="submit" class="action-btn">
+                    <i class="fa-solid fa-cart-plus"></i> Add to Cart
+                </button>
+            </form>
+            {% else %}
+            <a href="/login/" class="action-btn" style="flex:1; text-decoration:none; text-align:center;">
+                <i class="fa-solid fa-right-to-bracket"></i> Login to Buy
+            </a>
+            {% endif %}
+            {% if user and user.role != 'customer' %}
+            <div class="btn-group">
+                <a href="/books/{{ book.id }}/edit/" class="icon-btn edit-btn" title="Edit">
+                    <i class="fa-solid fa-pen-to-square"></i>
+                </a>
+                <form method="post" action="/books/{{ book.id }}/delete/" style="display:inline;" onsubmit="return confirm('Delete this book?');">
+                    <button type="submit" class="icon-btn delete-btn" title="Delete">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% empty %}
+    <div class="empty-state">
+        <i class="fa-solid fa-box-open"></i>
+        <h3>No books found</h3>
+        <p>The catalog is currently empty or the service is down.</p>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

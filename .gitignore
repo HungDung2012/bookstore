@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*.sqlite3
+*.db
+.env
+.env.*
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.DS_Store
+Thumbs.db
+ass05_04.02_dungch.pdf
+tutorial_assigment-05_assignment-06.pdf
+Assignment5_Technical_Report.docx
+DEPLOY_RENDER.md

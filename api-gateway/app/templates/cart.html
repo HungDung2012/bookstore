@@ -1,0 +1,63 @@
+{% extends 'base.html' %}
+
+{% block title %}My Cart | Microstore{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Your Shopping Cart</h1>
+    <p>Review and manage your selected items</p>
+</div>
+
+<div class="grid">
+    {% for item in items %}
+    <div class="glass-card">
+        <div class="card-header">
+            <div>
+                <h3 class="card-title">{{ item.book_title|default:"Unknown Book" }}</h3>
+                <p class="card-subtitle">Book ID: {{ item.book_id }}</p>
+            </div>
+            {% if item.book_price %}
+            <div class="price-tag">${{ item.book_price }}</div>
+            {% endif %}
+        </div>
+        
+        <div class="card-body">
+            <form method="post" action="/cart/{{ customer_id }}/update/" class="qty-form">
+                <input type="hidden" name="book_id" value="{{ item.book_id }}">
+                <label class="qty-label">Quantity:</label>
+                <div class="qty-controls">
+                    <input type="number" name="quantity" value="{{ item.quantity }}" min="1" class="qty-input">
+                    <button type="submit" class="icon-btn edit-btn" title="Update">
+                        <i class="fa-solid fa-check"></i>
+                    </button>
+                </div>
+            </form>
+        </div>
+        
+        <form method="post" action="/cart/{{ customer_id }}/delete-item/{{ item.id }}/" onsubmit="return confirm('Remove this item?');">
+            <button type="submit" class="action-btn" style="background: linear-gradient(135deg, #ef4444, #dc2626);">
+                <i class="fa-solid fa-trash"></i> Remove Item
+            </button>
+        </form>
+    </div>
+    {% empty %}
+    <div class="empty-state">
+        <i class="fa-solid fa-cart-arrow-down"></i>
+        <h3>Your cart is empty</h3>
+        <p>Looks like you haven't added any books to your cart yet.</p>
+        <br>
+        <a href="/books/" class="action-btn" style="display: inline-flex; width: auto; background: linear-gradient(135deg, var(--primary), var(--accent));">
+            <i class="fa-solid fa-store"></i> Browse Books
+        </a>
+    </div>
+    {% endfor %}
+</div>
+
+{% if items %}
+<div style="max-width:400px; margin:2rem auto 0;">
+    <a href="/checkout/" class="action-btn" style="text-decoration:none; text-align:center; background:linear-gradient(135deg, #10b981, #059669); font-size:1.1rem; padding:1rem;">
+        <i class="fa-solid fa-bag-shopping"></i> Proceed to Checkout
+    </a>
+</div>
+{% endif %}
+{% endblock %}

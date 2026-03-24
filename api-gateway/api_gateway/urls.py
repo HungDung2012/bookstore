@@ -1,0 +1,56 @@
+from django.contrib import admin
+from django.urls import path
+from django.views.generic import RedirectView
+
+from app.views import (
+    add_review,
+    add_to_cart,
+    book_create,
+    book_delete,
+    book_detail,
+    book_edit,
+    book_list,
+    cancel_order,
+    checkout,
+    delete_cart_item,
+    health_check,
+    login_view,
+    logout_view,
+    notifications_view,
+    order_detail,
+    order_list,
+    profile_view,
+    register_view,
+    update_cart_item,
+    view_cart,
+)
+
+
+urlpatterns = [
+    path("admin/", admin.site.urls),
+    path("healthz/", health_check, name="health_check"),
+    path("", RedirectView.as_view(url="/books/", permanent=False), name="home"),
+    path("login/", login_view, name="login"),
+    path("register/", register_view, name="register"),
+    path("logout/", logout_view, name="logout"),
+    path("profile/", profile_view, name="profile"),
+    path("books/", book_list, name="book_list"),
+    path("books/create/", book_create, name="book_create"),
+    path("books/<int:pk>/", book_detail, name="book_detail"),
+    path("books/<int:pk>/edit/", book_edit, name="book_edit"),
+    path("books/<int:pk>/delete/", book_delete, name="book_delete"),
+    path("books/<int:pk>/review/", add_review, name="add_review"),
+    path("cart/<int:customer_id>/", view_cart, name="view_cart"),
+    path("cart/add/", add_to_cart, name="add_to_cart"),
+    path("cart/<int:customer_id>/update/", update_cart_item, name="update_cart_item"),
+    path(
+        "cart/<int:customer_id>/delete-item/<int:item_id>/",
+        delete_cart_item,
+        name="delete_cart_item",
+    ),
+    path("checkout/", checkout, name="checkout"),
+    path("orders/", order_list, name="order_list"),
+    path("orders/<int:pk>/", order_detail, name="order_detail"),
+    path("orders/<int:pk>/cancel/", cancel_order, name="cancel_order"),
+    path("notifications/", notifications_view, name="notifications"),
+]

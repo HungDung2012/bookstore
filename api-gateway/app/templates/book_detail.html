@@ -1,0 +1,87 @@
+{% extends 'base.html' %}
+{% block title %}{{ book.title }} | Microstore{% endblock %}
+{% block content %}
+<div style="max-width:800px; margin:0 auto;">
+    <a href="/books/" style="color:var(--text-muted); text-decoration:none; display:inline-flex; align-items:center; gap:0.5rem; margin-bottom:1rem;">
+        <i class="fa-solid fa-arrow-left"></i> Back to Catalog
+    </a>
+    <div class="glass-card">
+        <div class="card-header">
+            <div>
+                <h1 class="card-title" style="font-size:1.8rem;">{{ book.title }}</h1>
+                <p class="card-subtitle" style="font-size:1.1rem;"><i class="fa-solid fa-feather"></i> {{ book.author }}</p>
+            </div>
+            <div class="price-tag" style="font-size:1.5rem;">${{ book.price }}</div>
+        </div>
+        <div class="card-body">
+            <div style="display:flex; gap:1rem; flex-wrap:wrap; margin:1rem 0;">
+                <span class="stock-badge"><i class="fa-solid fa-box"></i> {{ book.stock }} in stock</span>
+                {% if rating.average_rating %}
+                <span class="stock-badge" style="background:rgba(234,179,8,0.1); color:#facc15; border-color:rgba(234,179,8,0.2);">
+                    <i class="fa-solid fa-star"></i> {{ rating.average_rating }}/5 ({{ rating.total_reviews }} reviews)
+                </span>
+                {% endif %}
+            </div>
+            {% if user %}
+            <form method="post" action="/cart/add/" style="margin-top:1rem;">
+                <input type="hidden" name="book_id" value="{{ book.id }}">
+                <input type="hidden" name="quantity" value="1">
+                <button type="submit" class="action-btn" style="max-width:250px;"><i class="fa-solid fa-cart-plus"></i> Add to Cart</button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Reviews -->
+    <h2 style="margin:2rem 0 1rem; color:var(--text-main);">
+        <i class="fa-solid fa-comments"></i> Reviews ({{ reviews|length }})
+    </h2>
+
+    {% if user %}
+    <div class="glass-card" style="margin-bottom:1.5rem;">
+        <h3 style="color:var(--text-main); margin-bottom:0.5rem;">Write a Review</h3>
+        <form method="post" action="/books/{{ book.id }}/review/">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Rating</label>
+                    <select name="rating" style="width:100%; padding:0.75rem; background:rgba(15,23,42,0.6); border:1px solid var(--card-border); border-radius:8px; color:var(--text-main); font-family:'Outfit',sans-serif;">
+                        <option value="5">⭐⭐⭐⭐⭐ (5)</option>
+                        <option value="4">⭐⭐⭐⭐ (4)</option>
+                        <option value="3">⭐⭐⭐ (3)</option>
+                        <option value="2">⭐⭐ (2)</option>
+                        <option value="1">⭐ (1)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Title</label>
+                    <input type="text" name="title" placeholder="Summary..." style="width:100%; padding:0.75rem; background:rgba(15,23,42,0.6); border:1px solid var(--card-border); border-radius:8px; color:var(--text-main); font-family:'Outfit',sans-serif;">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Comment</label>
+                <textarea name="comment" rows="3" placeholder="Your thoughts..." style="width:100%; padding:0.75rem; background:rgba(15,23,42,0.6); border:1px solid var(--card-border); border-radius:8px; color:var(--text-main); font-family:'Outfit',sans-serif; resize:vertical;"></textarea>
+            </div>
+            <button type="submit" class="action-btn" style="max-width:200px;"><i class="fa-solid fa-paper-plane"></i> Submit</button>
+        </form>
+    </div>
+    {% endif %}
+
+    {% for rev in reviews %}
+    <div class="glass-card" style="margin-bottom:1rem;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+                <strong style="color:var(--text-main);">{{ rev.username }}</strong>
+                <span style="color:#facc15; margin-left:0.5rem;">
+                    {% for i in "12345" %}{% if forloop.counter <= rev.rating %}⭐{% endif %}{% endfor %}
+                </span>
+            </div>
+            <span style="color:var(--text-muted); font-size:0.8rem;">{{ rev.created_at|truncatechars:10 }}</span>
+        </div>
+        {% if rev.title %}<h4 style="color:var(--text-main); margin:0.5rem 0 0.25rem;">{{ rev.title }}</h4>{% endif %}
+        {% if rev.comment %}<p style="color:var(--text-muted);">{{ rev.comment }}</p>{% endif %}
+    </div>
+    {% empty %}
+    <div class="empty-state"><i class="fa-solid fa-comment-slash"></i><h3>No reviews yet</h3><p>Be the first to review this book!</p></div>
+    {% endfor %}
+</div>
+{% endblock %}

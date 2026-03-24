@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+{% block title %}My Orders | Microstore{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>My Orders</h1>
+    <p>Track your order history</p>
+</div>
+<div class="grid">
+    {% for order in orders %}
+    <a href="/orders/{{ order.id }}/" class="glass-card" style="text-decoration:none; color:inherit;">
+        <div class="card-header">
+            <div>
+                <h3 class="card-title">Order #{{ order.id }}</h3>
+                <p class="card-subtitle">{{ order.created_at|truncatechars:10 }}</p>
+            </div>
+            <span class="stock-badge" style="
+                {% if order.status == 'confirmed' or order.status == 'paid' %}background:rgba(16,185,129,0.1); color:#34d399; border-color:rgba(16,185,129,0.2);
+                {% elif order.status == 'cancelled' %}background:rgba(239,68,68,0.1); color:#f87171; border-color:rgba(239,68,68,0.2);
+                {% elif order.status == 'shipping' %}background:rgba(59,130,246,0.1); color:#60a5fa; border-color:rgba(59,130,246,0.2);
+                {% elif order.status == 'delivered' %}background:rgba(139,92,246,0.1); color:#a78bfa; border-color:rgba(139,92,246,0.2);
+                {% else %}background:rgba(234,179,8,0.1); color:#facc15; border-color:rgba(234,179,8,0.2);{% endif %}
+            ">{{ order.status|upper }}</span>
+        </div>
+        <div class="card-body">
+            <p style="color:var(--text-muted);">{{ order.items|length }} item(s)</p>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span class="price-tag">${{ order.total_amount }}</span>
+            <span style="color:var(--text-muted); font-size:0.85rem;">View details →</span>
+        </div>
+    </a>
+    {% empty %}
+    <div class="empty-state">
+        <i class="fa-solid fa-receipt"></i>
+        <h3>No orders yet</h3>
+        <p>Start shopping to see your order history here.</p>
+        <br><a href="/books/" class="action-btn" style="display:inline-flex; width:auto;"><i class="fa-solid fa-store"></i> Browse Books</a>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

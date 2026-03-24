@@ -1,0 +1,74 @@
+{% extends 'base.html' %}
+
+{% block title %}{% if editing %}Edit Book{% else %}Add New Book{% endif %} | Microstore{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{% if editing %}Edit Book{% else %}Add New Book{% endif %}</h1>
+    <p>{% if editing %}Update the book details below{% else %}Fill out the form to add a new book{% endif %}</p>
+</div>
+
+<div class="form-container">
+    <div class="glass-card" style="max-width: 600px; margin: 0 auto;">
+        {% if error %}
+        <div class="error-msg">
+            <i class="fa-solid fa-circle-exclamation"></i>
+            <span>{{ error }}</span>
+        </div>
+        {% endif %}
+        
+        <form method="post">
+            <div class="form-group">
+                <label for="title"><i class="fa-solid fa-heading"></i> Title</label>
+                <input type="text" id="title" name="title" value="{{ book.title|default:'' }}" required placeholder="Enter book title...">
+            </div>
+            
+            <div class="form-group">
+                <label for="author"><i class="fa-solid fa-feather"></i> Author</label>
+                <input type="text" id="author" name="author" value="{{ book.author|default:'' }}" required placeholder="Enter author name...">
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="price"><i class="fa-solid fa-dollar-sign"></i> Price</label>
+                    <input type="number" step="0.01" id="price" name="price" value="{{ book.price|default:'' }}" required placeholder="0.00">
+                </div>
+                <div class="form-group">
+                    <label for="stock"><i class="fa-solid fa-box"></i> Stock</label>
+                    <input type="number" id="stock" name="stock" value="{{ book.stock|default:'' }}" required placeholder="0">
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="category"><i class="fa-solid fa-tags"></i> Category</label>
+                    <select id="category" name="category">
+                        <option value="">-- None --</option>
+                        {% for cat in categories %}
+                        <option value="{{ cat.id }}" {% if book.category == cat.id %}selected{% endif %}>{{ cat.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="publisher"><i class="fa-solid fa-building"></i> Publisher</label>
+                    <select id="publisher" name="publisher">
+                        <option value="">-- None --</option>
+                        {% for pub in publishers %}
+                        <option value="{{ pub.id }}" {% if book.publisher == pub.id %}selected{% endif %}>{{ pub.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="action-btn">
+                    <i class="fa-solid fa-check"></i> {% if editing %}Save Changes{% else %}Add Book{% endif %}
+                </button>
+                <a href="/books/" class="action-btn" style="background: rgba(255,255,255,0.05); border: 1px solid var(--card-border);">
+                    <i class="fa-solid fa-arrow-left"></i> Cancel
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

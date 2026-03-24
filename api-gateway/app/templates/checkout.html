@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+{% block title %}Checkout | Microstore{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Checkout</h1>
+    <p>Complete your order</p>
+</div>
+<div class="form-container">
+    <div class="glass-card" style="max-width:600px; margin:0 auto;">
+        {% if error %}
+        <div class="error-msg"><i class="fa-solid fa-circle-exclamation"></i> {{ error }}</div>
+        {% endif %}
+        <form method="post">
+            <div class="form-group">
+                <label><i class="fa-solid fa-user"></i> Recipient Name</label>
+                <input type="text" name="shipping_name" value="{{ user.full_name }}" required placeholder="Full name...">
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label><i class="fa-solid fa-phone"></i> Phone</label>
+                    <input type="text" name="shipping_phone" value="{{ user.phone }}" required placeholder="Phone number...">
+                </div>
+                <div class="form-group">
+                    <label><i class="fa-solid fa-credit-card"></i> Payment</label>
+                    <select name="payment_method" style="width:100%; padding:0.75rem; background:rgba(15,23,42,0.6); border:1px solid var(--card-border); border-radius:8px; color:var(--text-main); font-family:'Outfit',sans-serif;">
+                        <option value="cod">💵 Cash on Delivery</option>
+                        <option value="bank_transfer">🏦 Bank Transfer</option>
+                        <option value="momo">📱 MoMo Wallet</option>
+                        <option value="vnpay">💳 VNPay</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label><i class="fa-solid fa-location-dot"></i> Shipping Address</label>
+                <input type="text" name="shipping_address" value="{{ user.address }}" required placeholder="Full address...">
+            </div>
+            <div class="form-group">
+                <label><i class="fa-solid fa-note-sticky"></i> Note (optional)</label>
+                <input type="text" name="note" placeholder="Special instructions...">
+            </div>
+            <button type="submit" class="action-btn" style="background:linear-gradient(135deg, #10b981, #059669);">
+                <i class="fa-solid fa-bag-shopping"></i> Place Order
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}

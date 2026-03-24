@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+{% block title %}Order #{{ order.id }} | Microstore{% endblock %}
+{% block content %}
+<div style="max-width:800px; margin:0 auto;">
+    <a href="/orders/" style="color:var(--text-muted); text-decoration:none; display:inline-flex; align-items:center; gap:0.5rem; margin-bottom:1rem;">
+        <i class="fa-solid fa-arrow-left"></i> Back to Orders
+    </a>
+    <div class="glass-card">
+        <div class="card-header">
+            <div>
+                <h1 class="card-title" style="font-size:1.5rem;">Order #{{ order.id }}</h1>
+                <p class="card-subtitle">{{ order.created_at|truncatechars:19 }}</p>
+            </div>
+            <span class="stock-badge" style="font-size:1rem;
+                {% if order.status == 'confirmed' or order.status == 'paid' %}background:rgba(16,185,129,0.1); color:#34d399; border-color:rgba(16,185,129,0.2);
+                {% elif order.status == 'cancelled' %}background:rgba(239,68,68,0.1); color:#f87171; border-color:rgba(239,68,68,0.2);
+                {% else %}background:rgba(234,179,8,0.1); color:#facc15; border-color:rgba(234,179,8,0.2);{% endif %}
+            ">{{ order.status|upper }}</span>
+        </div>
+
+        <div style="margin:1rem 0; padding:1rem; background:rgba(15,23,42,0.4); border-radius:12px;">
+            <p style="color:var(--text-muted); margin-bottom:0.5rem;"><i class="fa-solid fa-user"></i> <strong>{{ order.shipping_name }}</strong></p>
+            <p style="color:var(--text-muted); margin-bottom:0.5rem;"><i class="fa-solid fa-phone"></i> {{ order.shipping_phone }}</p>
+            <p style="color:var(--text-muted);"><i class="fa-solid fa-location-dot"></i> {{ order.shipping_address }}</p>
+            {% if order.note %}<p style="color:var(--text-muted); margin-top:0.5rem;"><i class="fa-solid fa-note-sticky"></i> {{ order.note }}</p>{% endif %}
+        </div>
+
+        <h3 style="color:var(--text-main); margin:1rem 0 0.5rem;">Items</h3>
+        {% for item in order.items %}
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:0.75rem 0; border-bottom:1px solid var(--card-border);">
+            <div>
+                <span style="color:var(--text-main);">{{ item.book_title }}</span>
+                <span style="color:var(--text-muted); margin-left:0.5rem;">x{{ item.quantity }}</span>
+            </div>
+            <span style="color:#60a5fa; font-weight:600;">${{ item.unit_price }}</span>
+        </div>
+        {% endfor %}
+
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:1rem; padding-top:1rem; border-top:2px solid var(--card-border);">
+            <span style="color:var(--text-main); font-size:1.2rem; font-weight:800;">Total</span>
+            <span class="price-tag" style="font-size:1.3rem;">${{ order.total_amount }}</span>
+        </div>
+
+        {% if order.status != 'cancelled' and order.status != 'delivered' %}
+        <form method="post" action="/orders/{{ order.id }}/cancel/" onsubmit="return confirm('Are you sure you want to cancel this order?');" style="margin-top:1rem;">
+            <button type="submit" class="action-btn" style="background:linear-gradient(135deg, #ef4444, #dc2626);">
+                <i class="fa-solid fa-ban"></i> Cancel Order
+            </button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

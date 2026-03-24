@@ -1,0 +1,282 @@
+services:
+  - type: web
+    name: bookstore-api-gateway
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerContext: ./api-gateway
+    dockerfilePath: ./api-gateway/Dockerfile
+    healthCheckPath: /healthz/
+    envVars:
+      - key: DEBUG
+        value: "false"
+      - key: ALLOWED_HOSTS
+        value: "*"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: USER_SERVICE_URL
+        fromService:
+          type: pserv
+          name: bookstore-user-service
+          property: hostport
+      - key: BOOK_SERVICE_URL
+        fromService:
+          type: pserv
+          name: bookstore-book-service
+          property: hostport
+      - key: INVENTORY_SERVICE_URL
+        fromService:
+          type: pserv
+          name: bookstore-inventory-service
+          property: hostport
+      - key: CART_SERVICE_URL
+        fromService:
+          type: pserv
+          name: bookstore-cart-service
+          property: hostport
+      - key: ORDER_SERVICE_URL
+        fromService:
+          type: pserv
+          name: bookstore-order-service
+          property: hostport
+      - key: PAYMENT_SERVICE_URL
+        fromService:
+          type: pserv
+          name: bookstore-payment-service
+          property: hostport
+      - key: REVIEW_SERVICE_URL
+        fromService:
+          type: pserv
+          name: bookstore-review-service
+          property: hostport
+      - key: NOTIFICATION_SERVICE_URL
+        fromService:
+          type: pserv
+          name: bookstore-notification-service
+          property: hostport
+
+  - type: pserv
+    name: bookstore-user-service
+    runtime: docker
+    plan: starter
+    region: singapore
+    dockerContext: ./user-service
+    dockerfilePath: ./user-service/Dockerfile
+    disk:
+      name: user-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: DEBUG
+        value: "false"
+      - key: ALLOWED_HOSTS
+        value: "*"
+      - key: DATABASE_URL
+        value: sqlite:////var/data/db.sqlite3
+      - key: SECRET_KEY
+        generateValue: true
+      - key: JWT_SECRET_KEY
+        generateValue: true
+
+  - type: pserv
+    name: bookstore-book-service
+    runtime: docker
+    plan: starter
+    region: singapore
+    dockerContext: ./book-service
+    dockerfilePath: ./book-service/Dockerfile
+    disk:
+      name: book-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: DEBUG
+        value: "false"
+      - key: ALLOWED_HOSTS
+        value: "*"
+      - key: DATABASE_URL
+        value: sqlite:////var/data/db.sqlite3
+      - key: SECRET_KEY
+        generateValue: true
+
+  - type: pserv
+    name: bookstore-inventory-service
+    runtime: docker
+    plan: starter
+    region: singapore
+    dockerContext: ./inventory-service
+    dockerfilePath: ./inventory-service/Dockerfile
+    disk:
+      name: inventory-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: DEBUG
+        value: "false"
+      - key: ALLOWED_HOSTS
+        value: "*"
+      - key: DATABASE_URL
+        value: sqlite:////var/data/db.sqlite3
+      - key: SECRET_KEY
+        generateValue: true
+
+  - type: pserv
+    name: bookstore-cart-service
+    runtime: docker
+    plan: starter
+    region: singapore
+    dockerContext: ./cart-service
+    dockerfilePath: ./cart-service/Dockerfile
+    disk:
+      name: cart-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: DEBUG
+        value: "false"
+      - key: ALLOWED_HOSTS
+        value: "*"
+      - key: DATABASE_URL
+        value: sqlite:////var/data/db.sqlite3
+      - key: SECRET_KEY
+        generateValue: true
+      - key: BOOK_SERVICE_URL
+        fromService:
+          type: pserv
+          name: bookstore-book-service
+          property: hostport
+
+  - type: pserv
+    name: bookstore-order-service
+    runtime: docker
+    plan: starter
+    region: singapore
+    dockerContext: ./order-service
+    dockerfilePath: ./order-service/Dockerfile
+    disk:
+      name: order-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: DEBUG
+        value: "false"
+      - key: ALLOWED_HOSTS
+        value: "*"
+      - key: DATABASE_URL
+        value: sqlite:////var/data/db.sqlite3
+      - key: SECRET_KEY
+        generateValue: true
+      - key: CART_SERVICE_URL
+        fromService:
+          type: pserv
+          name: bookstore-cart-service
+          property: hostport
+      - key: BOOK_SERVICE_URL
+        fromService:
+          type: pserv
+          name: bookstore-book-service
+          property: hostport
+      - key: INVENTORY_SERVICE_URL
+        fromService:
+          type: pserv
+          name: bookstore-inventory-service
+          property: hostport
+      - key: PAYMENT_SERVICE_URL
+        fromService:
+          type: pserv
+          name: bookstore-payment-service
+          property: hostport
+      - key: NOTIFICATION_SERVICE_URL
+        fromService:
+          type: pserv
+          name: bookstore-notification-service
+          property: hostport
+
+  - type: pserv
+    name: bookstore-payment-service
+    runtime: docker
+    plan: starter
+    region: singapore
+    dockerContext: ./payment-service
+    dockerfilePath: ./payment-service/Dockerfile
+    disk:
+      name: payment-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: DEBUG
+        value: "false"
+      - key: ALLOWED_HOSTS
+        value: "*"
+      - key: DATABASE_URL
+        value: sqlite:////var/data/db.sqlite3
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ORDER_SERVICE_URL
+        fromService:
+          type: pserv
+          name: bookstore-order-service
+          property: hostport
+      - key: INVENTORY_SERVICE_URL
+        fromService:
+          type: pserv
+          name: bookstore-inventory-service
+          property: hostport
+
+  - type: pserv
+    name: bookstore-review-service
+    runtime: docker
+    plan: starter
+    region: singapore
+    dockerContext: ./review-service
+    dockerfilePath: ./review-service/Dockerfile
+    disk:
+      name: review-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: DEBUG
+        value: "false"
+      - key: ALLOWED_HOSTS
+        value: "*"
+      - key: DATABASE_URL
+        value: sqlite:////var/data/db.sqlite3
+      - key: SECRET_KEY
+        generateValue: true
+
+  - type: pserv
+    name: bookstore-notification-service
+    runtime: docker
+    plan: starter
+    region: singapore
+    dockerContext: ./notification-service
+    dockerfilePath: ./notification-service/Dockerfile
+    disk:
+      name: notification-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: DEBUG
+        value: "false"
+      - key: ALLOWED_HOSTS
+        value: "*"
+      - key: DATABASE_URL
+        value: sqlite:////var/data/db.sqlite3
+      - key: SECRET_KEY
+        generateValue: true
