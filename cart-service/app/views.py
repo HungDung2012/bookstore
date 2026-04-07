@@ -18,92 +18,148 @@ def _service_url(env_name, default):
 
 BOOK_SERVICE_URL = _service_url("BOOK_SERVICE_URL", "book-service:8000")
 
+
+def _resolve_cart(cart_identifier):
+    if cart_identifier in (None, ""):
+        return None
+
+    try:
+        cart_id = int(cart_identifier)
+    except (TypeError, ValueError):
+        return None
+
+    cart = Cart.objects.filter(id=cart_id).first()
+    if cart:
+        return cart
+
+    cart, _ = Cart.objects.get_or_create(customer_id=cart_id)
+    return cart
+
+
 class CartCreate(APIView):
     def post(self, request):
-        serializer = CartSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors)
+        customer_id = request.data.get("customer_id")
+        if customer_id in (None, ""):
+            return Response({"error": "customer_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        cart, created = Cart.objects.get_or_create(customer_id=customer_id)
+        serializer = CartSerializer(cart)
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
 
 class AddCartItem(APIView):
     def post(self, request):
         book_id = request.data.get("book_id")
-        cart_id = request.data.get("cart")
-        
-        # Check if item already exists in cart, if so just update quantity
-        try:
-            cart = Cart.objects.get(id=cart_id)
-            existing = CartItem.objects.filter(cart=cart, book_id=book_id).first()
-            if existing:
-                qty = int(request.data.get("quantity", 1))
-                existing.quantity += qty
-                existing.save()
-                return Response(CartItemSerializer(existing).data)
-        except Cart.DoesNotExist:
-            pass
-        
-        try:
-            r = requests.get(f"{BOOK_SERVICE_URL}/books/", timeout=5)
-            r.raise_for_status()
-            books = r.json()
-            if not any(b["id"] == int(book_id) for b in books):
-                return Response({"error": "Book not found"}, status=404)
-        except requests.exceptions.RequestException as e:
-            return Response({"error": f"Error contacting book-service: {str(e)}"}, status=500)
+        quantity = request.data.get("quantity", 1)
+        cart = _resolve_cart(request.data.get("cart") or request.data.get("customer_id"))
 
-        serializer = CartItemSerializer(data=request.data)
+        if cart is None:
+            return Response({"error": "cart is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            quantity = int(quantity)
+            book_id = int(book_id)
+        except (TypeError, ValueError):
+            return Response(
+                {"error": "book_id and quantity must be integers"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if quantity <= 0:
+            return Response({"error": "quantity must be positive"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            response = requests.get(f"{BOOK_SERVICE_URL}/books/", timeout=5)
+            response.raise_for_status()
+            books = response.json()
+            if not any(book["id"] == book_id for book in books):
+                return Response({"error": "Book not found"}, status=status.HTTP_404_NOT_FOUND)
+        except requests.exceptions.RequestException as exc:
+            return Response(
+                {"error": f"Error contacting book-service: {exc}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        existing = CartItem.objects.filter(cart=cart, book_id=book_id).first()
+        if existing:
+            existing.quantity += quantity
+            existing.save(update_fields=["quantity"])
+            return Response(CartItemSerializer(existing).data)
+
+        serializer = CartItemSerializer(data={"cart": cart.id, "book_id": book_id, "quantity": quantity})
         if serializer.is_valid():
             serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
 class ViewCart(APIView):
     def get(self, request, customer_id):
-        try:
-            cart = Cart.objects.get(customer_id=customer_id)
-        except Cart.DoesNotExist:
-            return Response({"error": "Cart not found"}, status=404)
-        
+        cart = Cart.objects.filter(customer_id=customer_id).first()
+        if not cart:
+            return Response({"error": "Cart not found"}, status=status.HTTP_404_NOT_FOUND)
+
         items = CartItem.objects.filter(cart=cart)
         serializer = CartItemSerializer(items, many=True)
         return Response(serializer.data)
 
+
 class UpdateCartItem(APIView):
     def put(self, request, customer_id):
-        try:
-            cart = Cart.objects.get(customer_id=customer_id)
-        except Cart.DoesNotExist:
-            return Response({"error": "Cart not found"}, status=404)
-        
+        cart = Cart.objects.filter(customer_id=customer_id).first()
+        if not cart:
+            return Response({"error": "Cart not found"}, status=status.HTTP_404_NOT_FOUND)
+
         book_id = request.data.get("book_id")
         quantity = request.data.get("quantity")
-        
         if not book_id or quantity is None:
-            return Response({"error": "book_id and quantity are required"}, status=400)
-            
+            return Response(
+                {"error": "book_id and quantity are required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            quantity = int(quantity)
+        except (TypeError, ValueError):
+            return Response({"error": "quantity must be an integer"}, status=status.HTTP_400_BAD_REQUEST)
+
         try:
             cart_item = CartItem.objects.get(cart=cart, book_id=book_id)
-            if int(quantity) <= 0:
-                cart_item.delete()
-                return Response({"message": "Item removed from cart"})
-            else:
-                cart_item.quantity = quantity
-                cart_item.save()
-                return Response(CartItemSerializer(cart_item).data)
         except CartItem.DoesNotExist:
-            return Response({"error": "Item not found in cart"}, status=404)
+            return Response({"error": "Item not found in cart"}, status=status.HTTP_404_NOT_FOUND)
+
+        if quantity <= 0:
+            cart_item.delete()
+            return Response({"message": "Item removed from cart"})
+
+        cart_item.quantity = quantity
+        cart_item.save(update_fields=["quantity"])
+        return Response(CartItemSerializer(cart_item).data)
+
 
 class DeleteCartItem(APIView):
     def delete(self, request, customer_id, item_id):
-        try:
-            cart = Cart.objects.get(customer_id=customer_id)
-        except Cart.DoesNotExist:
-            return Response({"error": "Cart not found"}, status=404)
-        
+        cart = Cart.objects.filter(customer_id=customer_id).first()
+        if not cart:
+            return Response({"error": "Cart not found"}, status=status.HTTP_404_NOT_FOUND)
+
         try:
             cart_item = CartItem.objects.get(id=item_id, cart=cart)
-            cart_item.delete()
-            return Response({"message": "Item deleted"}, status=status.HTTP_204_NO_CONTENT)
         except CartItem.DoesNotExist:
-            return Response({"error": "Item not found"}, status=404)
+            return Response({"error": "Item not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        cart_item.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ClearCart(APIView):
+    def delete(self, request, customer_id):
+        cart = Cart.objects.filter(customer_id=customer_id).first()
+        if not cart:
+            return Response({"error": "Cart not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        CartItem.objects.filter(cart=cart).delete()
+        return Response({"message": "Cart cleared"})

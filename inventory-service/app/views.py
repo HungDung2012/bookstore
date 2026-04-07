@@ -1,15 +1,27 @@
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
-from django.shortcuts import get_object_or_404
+from collections import defaultdict
+
 from django.db import transaction
+from django.shortcuts import get_object_or_404
+from rest_framework import status
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
 from .models import InventoryItem
 from .serializers import InventoryItemSerializer
 
 
+def _aggregate_items(items):
+    aggregated = defaultdict(int)
+    for item in items:
+        book_id = item.get("book_id")
+        quantity = item.get("quantity", 1)
+        if book_id is None:
+            continue
+        aggregated[int(book_id)] += int(quantity)
+    return aggregated
+
+
 class InventoryListCreate(APIView):
-    """GET /inventory/ — Danh sách tồn kho
-       POST /inventory/ — Tạo mới tồn kho cho 1 cuốn sách"""
     def get(self, request):
         items = InventoryItem.objects.all()
         serializer = InventoryItemSerializer(items, many=True)
@@ -24,8 +36,6 @@ class InventoryListCreate(APIView):
 
 
 class InventoryDetail(APIView):
-    """GET /inventory/<book_id>/ — Xem tồn kho theo book_id
-       PUT /inventory/<book_id>/ — Cập nhật tồn kho"""
     def get(self, request, book_id):
         item = get_object_or_404(InventoryItem, book_id=book_id)
         return Response(InventoryItemSerializer(item).data)
@@ -40,102 +50,132 @@ class InventoryDetail(APIView):
 
 
 class CheckStock(APIView):
-    """POST /inventory/check-stock/ — Kiểm tra xem có đủ hàng không
-       Body: {"items": [{"book_id": 1, "quantity": 2}, ...]}"""
     def post(self, request):
-        items = request.data.get("items", [])
-        result = []
+        aggregated = _aggregate_items(request.data.get("items", []))
+        details = []
         all_available = True
-        for item in items:
-            book_id = item.get("book_id")
-            qty = item.get("quantity", 1)
+
+        for book_id, quantity in aggregated.items():
             try:
-                inv = InventoryItem.objects.get(book_id=book_id)
-                available = inv.available >= qty
-                result.append({
-                    "book_id": book_id,
-                    "requested": qty,
-                    "available": inv.available,
-                    "sufficient": available,
-                })
-                if not available:
+                inventory = InventoryItem.objects.get(book_id=book_id)
+                sufficient = inventory.available >= quantity
+                details.append(
+                    {
+                        "book_id": book_id,
+                        "requested": quantity,
+                        "available": inventory.available,
+                        "sufficient": sufficient,
+                    }
+                )
+                if not sufficient:
                     all_available = False
             except InventoryItem.DoesNotExist:
-                result.append({
-                    "book_id": book_id,
-                    "requested": qty,
-                    "available": 0,
-                    "sufficient": False,
-                })
+                details.append(
+                    {
+                        "book_id": book_id,
+                        "requested": quantity,
+                        "available": 0,
+                        "sufficient": False,
+                    }
+                )
                 all_available = False
-        return Response({"all_available": all_available, "details": result})
+
+        return Response({"all_available": all_available, "details": details})
 
 
 class ReserveStock(APIView):
-    """POST /inventory/reserve/ — Giữ hàng cho đơn hàng đang pending
-       Body: {"items": [{"book_id": 1, "quantity": 2}, ...]}"""
     @transaction.atomic
     def post(self, request):
-        items = request.data.get("items", [])
-        reserved_items = []
-        for item in items:
-            book_id = item.get("book_id")
-            qty = item.get("quantity", 1)
+        aggregated = _aggregate_items(request.data.get("items", []))
+        locked_items = {}
+
+        for book_id, quantity in aggregated.items():
             try:
-                inv = InventoryItem.objects.select_for_update().get(book_id=book_id)
-                if inv.available >= qty:
-                    inv.reserved += qty
-                    inv.save()
-                    reserved_items.append({"book_id": book_id, "reserved": qty})
-                else:
-                    # Rollback all reservations
-                    return Response(
-                        {"error": f"Insufficient stock for book {book_id}"},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
+                inventory = InventoryItem.objects.select_for_update().get(book_id=book_id)
             except InventoryItem.DoesNotExist:
                 return Response(
                     {"error": f"Inventory not found for book {book_id}"},
-                    status=status.HTTP_404_NOT_FOUND
+                    status=status.HTTP_404_NOT_FOUND,
                 )
-        return Response({"message": "Stock reserved", "items": reserved_items})
+
+            if inventory.available < quantity:
+                return Response(
+                    {"error": f"Insufficient stock for book {book_id}"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            locked_items[book_id] = inventory
+
+        for book_id, quantity in aggregated.items():
+            inventory = locked_items[book_id]
+            inventory.reserved += quantity
+            inventory.save(update_fields=["reserved", "updated_at"])
+
+        return Response(
+            {
+                "message": "Stock reserved",
+                "items": [{"book_id": book_id, "reserved": quantity} for book_id, quantity in aggregated.items()],
+            }
+        )
 
 
 class ConfirmDeduction(APIView):
-    """POST /inventory/confirm/ — Xác nhận trừ kho (sau khi thanh toán thành công)
-       Body: {"items": [{"book_id": 1, "quantity": 2}, ...]}"""
     @transaction.atomic
     def post(self, request):
-        items = request.data.get("items", [])
-        for item in items:
-            book_id = item.get("book_id")
-            qty = item.get("quantity", 1)
+        aggregated = _aggregate_items(request.data.get("items", []))
+        locked_items = {}
+
+        for book_id, quantity in aggregated.items():
             try:
-                inv = InventoryItem.objects.select_for_update().get(book_id=book_id)
-                inv.quantity -= qty
-                inv.reserved -= qty
-                inv.save()
+                inventory = InventoryItem.objects.select_for_update().get(book_id=book_id)
             except InventoryItem.DoesNotExist:
                 return Response(
                     {"error": f"Inventory not found for book {book_id}"},
-                    status=status.HTTP_404_NOT_FOUND
+                    status=status.HTTP_404_NOT_FOUND,
                 )
+
+            if inventory.quantity < quantity or inventory.reserved < quantity:
+                return Response(
+                    {"error": f"Cannot confirm stock for book {book_id}"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            locked_items[book_id] = inventory
+
+        for book_id, quantity in aggregated.items():
+            inventory = locked_items[book_id]
+            inventory.quantity -= quantity
+            inventory.reserved -= quantity
+            inventory.save(update_fields=["quantity", "reserved", "updated_at"])
+
         return Response({"message": "Stock deducted successfully"})
 
 
 class ReleaseStock(APIView):
-    """POST /inventory/release/ — Hủy giữ hàng (khi thanh toán thất bại hoặc hủy đơn)
-       Body: {"items": [{"book_id": 1, "quantity": 2}, ...]}"""
     @transaction.atomic
     def post(self, request):
-        items = request.data.get("items", [])
-        for item in items:
-            book_id = item.get("book_id")
-            qty = item.get("quantity", 1)
-            try:
-                inv = InventoryItem.objects.select_for_update().get(book_id=book_id)
-                inv.reserved = max(0, inv.reserved - qty)
-                inv.save()
-            except InventoryItem.DoesNotExist:
-                pass  # Silent fail for release
+        aggregated = _aggregate_items(request.data.get("items", []))
+        for book_id, quantity in aggregated.items():
+            inventory = InventoryItem.objects.select_for_update().filter(book_id=book_id).first()
+            if not inventory:
+                continue
+            inventory.reserved = max(0, inventory.reserved - quantity)
+            inventory.save(update_fields=["reserved", "updated_at"])
         return Response({"message": "Stock released"})
+
+
+class RestockInventory(APIView):
+    @transaction.atomic
+    def post(self, request):
+        aggregated = _aggregate_items(request.data.get("items", []))
+        for book_id, quantity in aggregated.items():
+            try:
+                inventory = InventoryItem.objects.select_for_update().get(book_id=book_id)
+            except InventoryItem.DoesNotExist:
+                return Response(
+                    {"error": f"Inventory not found for book {book_id}"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            inventory.quantity += quantity
+            inventory.save(update_fields=["quantity", "updated_at"])
+
+        return Response({"message": "Inventory restocked"})

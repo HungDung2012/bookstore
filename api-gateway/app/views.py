@@ -1,8 +1,7 @@
-import json
 import os
 
 import requests
-from django.http import JsonResponse
+from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.csrf import csrf_exempt
 
@@ -25,19 +24,41 @@ NOTIFICATION_SERVICE_URL = _service_url("NOTIFICATION_SERVICE_URL", "notificatio
 
 
 def _get_user(request):
-    """Helper: láº¥y user info tá»« session token"""
     token = request.session.get("token")
     user = request.session.get("user")
     if token and user:
         return user, token
+
+    if token:
+        try:
+            verify_resp = requests.post(
+                f"{USER_SERVICE_URL}/auth/verify/",
+                json={"token": token},
+                timeout=5,
+            )
+            if verify_resp.status_code == 200:
+                user = verify_resp.json().get("user")
+                if user:
+                    request.session["user"] = user
+                    request.session.modified = True
+                    return user, token
+        except requests.exceptions.RequestException:
+            pass
+
     return None, None
+
+
+def _require_matching_user(request, resource_user_id):
+    user, token = _get_user(request)
+    if not user:
+        return None, None, redirect("/login/")
+    if user["id"] != resource_user_id:
+        return user, token, HttpResponseForbidden("You cannot access another user's data.")
+    return user, token, None
 
 
 def health_check(request):
     return JsonResponse({"status": "ok", "service": "api-gateway"})
-
-
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ AUTH â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 @csrf_exempt
@@ -48,16 +69,17 @@ def login_view(request):
             "password": request.POST.get("password"),
         }
         try:
-            r = requests.post(f"{USER_SERVICE_URL}/auth/login/", json=data, timeout=5)
-            if r.status_code == 200:
-                result = r.json()
+            response = requests.post(f"{USER_SERVICE_URL}/auth/login/", json=data, timeout=5)
+            if response.status_code == 200:
+                result = response.json()
+                request.session.cycle_key()
                 request.session["token"] = result["token"]
                 request.session["user"] = result["user"]
+                request.session.modified = True
                 return redirect("/books/")
-            else:
-                error = r.json().get("error", "Login failed")
-        except requests.exceptions.RequestException as e:
-            error = f"User service unavailable: {e}"
+            error = response.json().get("error", "Login failed")
+        except requests.exceptions.RequestException as exc:
+            error = f"User service unavailable: {exc}"
         return render(request, "login.html", {"error": error})
     return render(request, "login.html")
 
@@ -74,16 +96,17 @@ def register_view(request):
             "address": request.POST.get("address", ""),
         }
         try:
-            r = requests.post(f"{USER_SERVICE_URL}/auth/register/", json=data, timeout=5)
-            if r.status_code == 201:
-                result = r.json()
+            response = requests.post(f"{USER_SERVICE_URL}/auth/register/", json=data, timeout=5)
+            if response.status_code == 201:
+                result = response.json()
+                request.session.cycle_key()
                 request.session["token"] = result["token"]
                 request.session["user"] = result["user"]
+                request.session.modified = True
                 return redirect("/books/")
-            else:
-                error = r.json()
-        except requests.exceptions.RequestException as e:
-            error = f"User service unavailable: {e}"
+            error = response.json()
+        except requests.exceptions.RequestException as exc:
+            error = f"User service unavailable: {exc}"
         return render(request, "register.html", {"error": error})
     return render(request, "register.html")
 
@@ -94,26 +117,23 @@ def logout_view(request):
 
 
 def profile_view(request):
-    user, token = _get_user(request)
+    user, _ = _get_user(request)
     if not user:
         return redirect("/login/")
     return render(request, "profile.html", {"user": user})
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ BOOKS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-
 def book_list(request):
     user, _ = _get_user(request)
     try:
-        r = requests.get(f"{BOOK_SERVICE_URL}/books/", timeout=5)
-        r.raise_for_status()
-        books = r.json()
-        # Get ratings for each book
+        response = requests.get(f"{BOOK_SERVICE_URL}/books/", timeout=5)
+        response.raise_for_status()
+        books = response.json()
         for book in books:
             try:
                 rating_resp = requests.get(
-                    f"{REVIEW_SERVICE_URL}/reviews/rating/{book['id']}/", timeout=3
+                    f"{REVIEW_SERVICE_URL}/reviews/rating/{book['id']}/",
+                    timeout=3,
                 )
                 if rating_resp.status_code == 200:
                     book["rating"] = rating_resp.json()
@@ -129,6 +149,7 @@ def book_create(request):
     user, _ = _get_user(request)
     if not user:
         return redirect("/login/")
+
     categories, publishers = [], []
     try:
         cat_resp = requests.get(f"{BOOK_SERVICE_URL}/categories/", timeout=5)
@@ -147,19 +168,19 @@ def book_create(request):
             "price": request.POST.get("price"),
             "stock": request.POST.get("stock"),
         }
-        cat = request.POST.get("category")
-        pub = request.POST.get("publisher")
-        if cat:
-            data["category"] = int(cat)
-        if pub:
-            data["publisher"] = int(pub)
+        category = request.POST.get("category")
+        publisher = request.POST.get("publisher")
+        if category:
+            data["category"] = int(category)
+        if publisher:
+            data["publisher"] = int(publisher)
         try:
-            r = requests.post(f"{BOOK_SERVICE_URL}/books/", json=data, timeout=5)
-            if r.status_code == 201:
+            response = requests.post(f"{BOOK_SERVICE_URL}/books/", json=data, timeout=5)
+            if response.status_code == 201:
                 return redirect("/books/")
-            error = r.json()
-        except requests.exceptions.RequestException as e:
-            error = {"error": str(e)}
+            error = response.json()
+        except requests.exceptions.RequestException as exc:
+            error = {"error": str(exc)}
         return render(
             request,
             "book_form.html",
@@ -170,6 +191,7 @@ def book_create(request):
                 "user": user,
             },
         )
+
     return render(
         request,
         "book_form.html",
@@ -182,6 +204,7 @@ def book_edit(request, pk):
     user, _ = _get_user(request)
     if not user:
         return redirect("/login/")
+
     categories, publishers, book = [], [], {}
     try:
         book_resp = requests.get(f"{BOOK_SERVICE_URL}/books/{pk}/", timeout=5)
@@ -202,18 +225,16 @@ def book_edit(request, pk):
             "author": request.POST.get("author"),
             "price": request.POST.get("price"),
             "stock": request.POST.get("stock"),
+            "category": int(request.POST.get("category")) if request.POST.get("category") else None,
+            "publisher": int(request.POST.get("publisher")) if request.POST.get("publisher") else None,
         }
-        cat = request.POST.get("category")
-        pub = request.POST.get("publisher")
-        data["category"] = int(cat) if cat else None
-        data["publisher"] = int(pub) if pub else None
         try:
-            r = requests.put(f"{BOOK_SERVICE_URL}/books/{pk}/", json=data, timeout=5)
-            if r.status_code == 200:
+            response = requests.put(f"{BOOK_SERVICE_URL}/books/{pk}/", json=data, timeout=5)
+            if response.status_code == 200:
                 return redirect("/books/")
-            error = r.json()
-        except requests.exceptions.RequestException as e:
-            error = {"error": str(e)}
+            error = response.json()
+        except requests.exceptions.RequestException as exc:
+            error = {"error": str(exc)}
         return render(
             request,
             "book_form.html",
@@ -226,6 +247,7 @@ def book_edit(request, pk):
                 "user": user,
             },
         )
+
     return render(
         request,
         "book_form.html",
@@ -256,24 +278,26 @@ def book_detail(request, pk):
         book_resp = requests.get(f"{BOOK_SERVICE_URL}/books/{pk}/", timeout=5)
         if book_resp.status_code == 200:
             book = book_resp.json()
-        rev_resp = requests.get(f"{REVIEW_SERVICE_URL}/reviews/?book_id={pk}", timeout=5)
-        if rev_resp.status_code == 200:
-            reviews = rev_resp.json()
-        rat_resp = requests.get(f"{REVIEW_SERVICE_URL}/reviews/rating/{pk}/", timeout=3)
-        if rat_resp.status_code == 200:
-            rating = rat_resp.json()
-        # Enrich reviews with usernames
-        for rev in reviews:
+        review_resp = requests.get(f"{REVIEW_SERVICE_URL}/reviews/?book_id={pk}", timeout=5)
+        if review_resp.status_code == 200:
+            reviews = review_resp.json()
+        rating_resp = requests.get(f"{REVIEW_SERVICE_URL}/reviews/rating/{pk}/", timeout=3)
+        if rating_resp.status_code == 200:
+            rating = rating_resp.json()
+        for review in reviews:
             try:
-                u_resp = requests.get(f"{USER_SERVICE_URL}/users/{rev['user_id']}/", timeout=3)
-                if u_resp.status_code == 200:
-                    rev["username"] = u_resp.json().get("full_name") or u_resp.json().get(
-                        "username"
-                    )
+                user_resp = requests.get(
+                    f"{USER_SERVICE_URL}/users/{review['user_id']}/",
+                    timeout=3,
+                )
+                if user_resp.status_code == 200:
+                    payload = user_resp.json()
+                    review["username"] = payload.get("full_name") or payload.get("username")
             except requests.exceptions.RequestException:
-                rev["username"] = f"User #{rev['user_id']}"
+                review["username"] = f"User #{review['user_id']}"
     except requests.exceptions.RequestException:
         pass
+
     return render(
         request,
         "book_detail.html",
@@ -301,9 +325,6 @@ def add_review(request, pk):
     return redirect(f"/books/{pk}/")
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ CART â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-
 @csrf_exempt
 def add_to_cart(request):
     user, _ = _get_user(request)
@@ -323,39 +344,48 @@ def add_to_cart(request):
             except requests.exceptions.RequestException:
                 pass
         try:
-            data = {"cart": user_id, "book_id": int(book_id), "quantity": int(quantity)}
-            requests.post(f"{CART_SERVICE_URL}/cart-items/", json=data, timeout=5)
+            requests.post(
+                f"{CART_SERVICE_URL}/cart-items/",
+                json={"cart": user_id, "book_id": int(book_id), "quantity": int(quantity)},
+                timeout=5,
+            )
         except requests.exceptions.RequestException:
             pass
     return redirect(f"/cart/{user['id']}/")
 
 
 def view_cart(request, customer_id):
-    user, _ = _get_user(request)
-    if not user:
-        return redirect("/login/")
+    user, _, response = _require_matching_user(request, customer_id)
+    if response:
+        return response
+
     try:
-        r = requests.get(f"{CART_SERVICE_URL}/carts/{customer_id}/", timeout=5)
-        r.raise_for_status()
-        items = r.json()
+        cart_resp = requests.get(f"{CART_SERVICE_URL}/carts/{customer_id}/", timeout=5)
+        cart_resp.raise_for_status()
+        items = cart_resp.json()
         try:
             book_resp = requests.get(f"{BOOK_SERVICE_URL}/books/", timeout=5)
             if book_resp.status_code == 200:
-                books = {b["id"]: b for b in book_resp.json()}
+                books = {book["id"]: book for book in book_resp.json()}
                 for item in items:
                     book_id = item.get("book_id")
-                    if book_id and book_id in books:
+                    if book_id in books:
                         item["book_title"] = books[book_id].get("title")
                         item["book_price"] = books[book_id].get("price")
         except requests.exceptions.RequestException:
             pass
     except requests.exceptions.RequestException:
         items = []
+
     return render(request, "cart.html", {"items": items, "customer_id": customer_id, "user": user})
 
 
 @csrf_exempt
 def update_cart_item(request, customer_id):
+    user, _, response = _require_matching_user(request, customer_id)
+    if response:
+        return response
+
     if request.method == "POST":
         book_id = request.POST.get("book_id")
         quantity = request.POST.get("quantity")
@@ -367,20 +397,21 @@ def update_cart_item(request, customer_id):
             )
         except requests.exceptions.RequestException:
             pass
-    return redirect(f"/cart/{customer_id}/")
+    return redirect(f"/cart/{user['id']}/")
 
 
 @csrf_exempt
 def delete_cart_item(request, customer_id, item_id):
+    user, _, response = _require_matching_user(request, customer_id)
+    if response:
+        return response
+
     if request.method == "POST":
         try:
             requests.delete(f"{CART_SERVICE_URL}/carts/{customer_id}/delete-item/{item_id}/", timeout=5)
         except requests.exceptions.RequestException:
             pass
-    return redirect(f"/cart/{customer_id}/")
-
-
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ ORDERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    return redirect(f"/cart/{user['id']}/")
 
 
 @csrf_exempt
@@ -398,10 +429,9 @@ def checkout(request):
             "payment_method": request.POST.get("payment_method", "cod"),
         }
         try:
-            r = requests.post(f"{ORDER_SERVICE_URL}/orders/checkout/", json=data, timeout=10)
-            if r.status_code == 201:
-                order = r.json()
-                # Send notification
+            response = requests.post(f"{ORDER_SERVICE_URL}/orders/checkout/", json=data, timeout=10)
+            if response.status_code == 201:
+                order = response.json()
                 try:
                     requests.post(
                         f"{NOTIFICATION_SERVICE_URL}/notifications/",
@@ -417,12 +447,11 @@ def checkout(request):
                 except requests.exceptions.RequestException:
                     pass
                 return redirect(f"/orders/{order['id']}/")
-            else:
-                error = r.json().get("error", "Checkout failed")
-                return render(request, "checkout.html", {"error": error, "user": user})
-        except requests.exceptions.RequestException as e:
-            return render(request, "checkout.html", {"error": str(e), "user": user})
-    # GET: show checkout form
+            error = response.json().get("error", "Checkout failed")
+            return render(request, "checkout.html", {"error": error, "user": user})
+        except requests.exceptions.RequestException as exc:
+            return render(request, "checkout.html", {"error": str(exc), "user": user})
+
     return render(request, "checkout.html", {"user": user})
 
 
@@ -431,8 +460,8 @@ def order_list(request):
     if not user:
         return redirect("/login/")
     try:
-        r = requests.get(f"{ORDER_SERVICE_URL}/orders/?user_id={user['id']}", timeout=5)
-        orders = r.json() if r.status_code == 200 else []
+        response = requests.get(f"{ORDER_SERVICE_URL}/orders/?user_id={user['id']}", timeout=5)
+        orders = response.json() if response.status_code == 200 else []
     except requests.exceptions.RequestException:
         orders = []
     return render(request, "orders.html", {"orders": orders, "user": user})
@@ -443,10 +472,14 @@ def order_detail(request, pk):
     if not user:
         return redirect("/login/")
     try:
-        r = requests.get(f"{ORDER_SERVICE_URL}/orders/{pk}/", timeout=5)
-        order = r.json() if r.status_code == 200 else {}
+        response = requests.get(f"{ORDER_SERVICE_URL}/orders/{pk}/", timeout=5)
+        order = response.json() if response.status_code == 200 else {}
     except requests.exceptions.RequestException:
         order = {}
+
+    if order and order.get("user_id") != user["id"]:
+        return HttpResponseForbidden("You cannot access another user's order.")
+
     return render(request, "order_detail.html", {"order": order, "user": user})
 
 
@@ -457,13 +490,16 @@ def cancel_order(request, pk):
         return redirect("/login/")
     if request.method == "POST":
         try:
+            order_resp = requests.get(f"{ORDER_SERVICE_URL}/orders/{pk}/", timeout=5)
+            if order_resp.status_code == 200 and order_resp.json().get("user_id") != user["id"]:
+                return HttpResponseForbidden("You cannot cancel another user's order.")
+        except requests.exceptions.RequestException:
+            pass
+        try:
             requests.post(f"{ORDER_SERVICE_URL}/orders/{pk}/cancel/", timeout=5)
         except requests.exceptions.RequestException:
             pass
     return redirect(f"/orders/{pk}/")
-
-
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ NOTIFICATIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 def notifications_view(request):
@@ -471,8 +507,11 @@ def notifications_view(request):
     if not user:
         return redirect("/login/")
     try:
-        r = requests.get(f"{NOTIFICATION_SERVICE_URL}/notifications/?user_id={user['id']}", timeout=5)
-        notifs = r.json() if r.status_code == 200 else []
+        response = requests.get(
+            f"{NOTIFICATION_SERVICE_URL}/notifications/?user_id={user['id']}",
+            timeout=5,
+        )
+        notifications = response.json() if response.status_code == 200 else []
     except requests.exceptions.RequestException:
-        notifs = []
-    return render(request, "notifications.html", {"notifications": notifs, "user": user})
+        notifications = []
+    return render(request, "notifications.html", {"notifications": notifications, "user": user})
