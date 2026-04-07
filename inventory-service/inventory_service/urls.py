@@ -1,8 +1,13 @@
 from django.contrib import admin
 from django.urls import path
 from app.views import (
-    InventoryListCreate, InventoryDetail,
-    CheckStock, ReserveStock, ConfirmDeduction, ReleaseStock,
+    CheckStock,
+    ConfirmDeduction,
+    InventoryDetail,
+    InventoryListCreate,
+    ReleaseStock,
+    ReserveStock,
+    RestockInventory,
 )
 
 urlpatterns = [
@@ -13,4 +18,5 @@ urlpatterns = [
     path('inventory/reserve/', ReserveStock.as_view()),
     path('inventory/confirm/', ConfirmDeduction.as_view()),
     path('inventory/release/', ReleaseStock.as_view()),
+    path('inventory/restock/', RestockInventory.as_view()),
 ]

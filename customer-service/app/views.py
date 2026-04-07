@@ -55,6 +55,9 @@ class CustomerDetail(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class CustomerUpdateCart(APIView):
+    def get_object(self, pk):
+        return get_object_or_404(Customer, pk=pk)
+
     # updateCart()
     def put(self, request, pk):
         customer = self.get_object(pk)
