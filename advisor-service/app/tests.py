@@ -393,6 +393,17 @@ class AdvisorApiTests(TestCase):
 
         self.assertEqual(docs, [])
 
+    def test_retriever_returns_policy_document_for_generic_policy_question(self):
+        kb = KnowledgeBaseService("app/data/knowledge_base")
+        retriever = RetrieverService(kb)
+
+        docs = retriever.search("What is your policy?", target_segment="casual_buyer", top_k=2)
+
+        self.assertTrue(docs)
+        self.assertTrue(
+            any(doc["doc_type"] == "policy" or "policy" in doc["text"].lower() for doc in docs)
+        )
+
     def test_knowledge_base_service_resolves_relative_path_from_app_base(self):
         original_cwd = os.getcwd()
         with tempfile.TemporaryDirectory() as tmp_dir:

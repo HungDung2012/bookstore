@@ -11,7 +11,6 @@ class RetrieverService:
         "for",
         "is",
         "or",
-        "policy",
         "the",
         "to",
         "what",
