@@ -87,3 +87,17 @@ class AdvisorService:
             "sources": sources,
             "feature_summary": feature_summary,
         }
+
+    def profile(self, user_id):
+        books = self.client.get_books()
+        profile = self.client.get_user(user_id)
+        orders = self.client.get_orders(user_id)
+        reviews = self.client.get_reviews(user_id)
+        cart_items = self.client.get_cart(user_id)
+        features = build_behavior_features(profile, books, orders, reviews, cart_items)
+        prediction = self.model_service.predict(features)
+        prediction["feature_summary"] = (
+            f"Predicted segment is {prediction['behavior_segment']} from "
+            f"{features['order_count']} orders and {features['review_count']} reviews."
+        )
+        return prediction

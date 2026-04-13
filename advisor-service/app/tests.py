@@ -47,6 +47,18 @@ class AdvisorApiTests(TestCase):
         self.assertEqual(response.json()["behavior_segment"], "tech_reader")
         chat_mock.assert_called_once_with(user_id=1, question="Recommend books")
 
+    @patch("app.services.advisor.AdvisorService.profile")
+    def test_profile_endpoint_returns_behavior_segment(self, profile_mock):
+        profile_mock.return_value = {
+            "behavior_segment": "literature_reader",
+            "feature_summary": "Frequent purchases in literature.",
+        }
+
+        response = self.client.get("/advisor/profile/4/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["behavior_segment"], "literature_reader")
+
     @patch("app.services.advisor.AdvisorService.chat")
     def test_chat_endpoint_allows_missing_user_id_for_anonymous_chat(self, chat_mock):
         chat_mock.return_value = {

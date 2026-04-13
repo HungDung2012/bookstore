@@ -20,3 +20,9 @@ class AdvisorChatView(APIView):
             question=serializer.validated_data["question"],
         )
         return Response(payload, status=status.HTTP_200_OK)
+
+
+class AdvisorProfileView(APIView):
+    def get(self, request, user_id):
+        payload = AdvisorService().profile(user_id=user_id)
+        return Response(payload, status=status.HTTP_200_OK)
