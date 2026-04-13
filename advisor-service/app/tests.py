@@ -256,13 +256,119 @@ class AdvisorApiTests(TestCase):
         fake_model = load_model_mock.return_value
         fake_model.predict.return_value = [[0.8, 0.1, 0.05, 0.03, 0.02]]
 
-        service = BehaviorModelService()
-        result = service.predict(
-            {
-                "order_count": 4,
-                "total_spent": 100.0,
-                "category_3_count": 9,
-            }
-        )
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            model_path = tmp_path / "model_behavior.h5"
+            features_path = tmp_path / "features.txt"
+            labels_path = tmp_path / "labels.txt"
+
+            model_path.write_text("stub", encoding="utf-8")
+            features_path.write_text(
+                "order_count\ntotal_spent\ncategory_3_count",
+                encoding="utf-8",
+            )
+            labels_path.write_text(
+                "\n".join(
+                    [
+                        "tech_reader",
+                        "literature_reader",
+                        "family_reader",
+                        "bargain_hunter",
+                        "casual_buyer",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            service = BehaviorModelService(
+                model_path=model_path,
+                features_path=features_path,
+                labels_path=labels_path,
+            )
+            result = service.predict(
+                {
+                    "order_count": 4,
+                    "total_spent": 100.0,
+                    "category_3_count": 9,
+                }
+            )
 
         self.assertEqual(result["behavior_segment"], "tech_reader")
+
+    @patch("app.services.behavior_model.load_model")
+    def test_behavior_model_predict_uses_labels_and_features_artifacts(self, load_model_mock):
+        fake_model = load_model_mock.return_value
+        fake_model.predict.return_value = [[0.7, 0.2, 0.05, 0.03, 0.02]]
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            model_path = tmp_path / "model_behavior.h5"
+            features_path = tmp_path / "features.txt"
+            labels_path = tmp_path / "labels.txt"
+
+            model_path.write_text("stub", encoding="utf-8")
+            features_path.write_text(
+                "total_spent\norder_count\ncategory_3_count",
+                encoding="utf-8",
+            )
+            labels_path.write_text(
+                "\n".join(
+                    [
+                        "bargain_hunter",
+                        "tech_reader",
+                        "family_reader",
+                        "literature_reader",
+                        "casual_buyer",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            service = BehaviorModelService(
+                model_path=model_path,
+                features_path=features_path,
+                labels_path=labels_path,
+            )
+            result = service.predict(
+                {
+                    "order_count": 4,
+                    "total_spent": 100.0,
+                    "category_3_count": 9,
+                }
+            )
+
+        self.assertEqual(result["behavior_segment"], "bargain_hunter")
+        self.assertEqual(fake_model.predict.call_args.args[0].tolist(), [[100.0, 4.0, 9.0]])
+
+    def test_behavior_model_predict_logs_warning_and_falls_back_when_features_missing(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            model_path = tmp_path / "model_behavior.h5"
+            labels_path = tmp_path / "labels.txt"
+
+            model_path.write_text("stub", encoding="utf-8")
+            labels_path.write_text(
+                "\n".join(
+                    [
+                        "tech_reader",
+                        "literature_reader",
+                        "family_reader",
+                        "bargain_hunter",
+                        "casual_buyer",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            service = BehaviorModelService(
+                model_path=model_path,
+                features_path=tmp_path / "missing_features.txt",
+                labels_path=labels_path,
+            )
+
+            with self.assertLogs("app.services.behavior_model", level="WARNING") as logs:
+                result = service.predict({"order_count": 4, "total_spent": 100.0})
+
+        self.assertEqual(result["behavior_segment"], "casual_buyer")
+        self.assertEqual(result["probabilities"], {})
+        self.assertIn("features artifact missing", "\n".join(logs.output))

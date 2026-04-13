@@ -5,6 +5,10 @@ from django.core.management.base import BaseCommand, CommandError
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 
+APP_DIR = Path(__file__).resolve().parents[2]
+DATASET_PATH = APP_DIR / "data" / "training" / "behavior_dataset.csv"
+OUTPUT_DIR = APP_DIR / "data" / "models"
+
 
 class Command(BaseCommand):
     help = "Train the deep learning behavior classifier."
@@ -17,8 +21,10 @@ class Command(BaseCommand):
         except ImportError as exc:
             raise CommandError("TensorFlow is required to train the behavior model.") from exc
 
-        dataset_path = Path("app/data/training/behavior_dataset.csv")
-        df = pd.read_csv(dataset_path).fillna(0)
+        if not DATASET_PATH.exists():
+            raise CommandError(f"Training dataset not found at {DATASET_PATH}")
+
+        df = pd.read_csv(DATASET_PATH).fillna(0)
 
         y = df.pop("label")
         if "user_id" in df.columns:
@@ -47,10 +53,9 @@ class Command(BaseCommand):
         )
         model.fit(X_train, y_train, epochs=20, batch_size=8, verbose=0)
 
-        output_dir = Path("app/data/models")
-        output_dir.mkdir(parents=True, exist_ok=True)
-        model.save(output_dir / "model_behavior.h5")
-        (output_dir / "labels.txt").write_text("\n".join(encoder.classes_), encoding="utf-8")
-        (output_dir / "features.txt").write_text("\n".join(df.columns.tolist()), encoding="utf-8")
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        model.save(OUTPUT_DIR / "model_behavior.h5")
+        (OUTPUT_DIR / "labels.txt").write_text("\n".join(encoder.classes_), encoding="utf-8")
+        (OUTPUT_DIR / "features.txt").write_text("\n".join(df.columns.tolist()), encoding="utf-8")
         _, accuracy = model.evaluate(X_test, y_test, verbose=0)
         self.stdout.write(self.style.SUCCESS(f"Model trained with accuracy={accuracy:.2f}"))
