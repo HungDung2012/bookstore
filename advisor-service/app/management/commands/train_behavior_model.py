@@ -1,9 +1,6 @@
 from pathlib import Path
 
-import pandas as pd
 from django.core.management.base import BaseCommand, CommandError
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
 
 APP_DIR = Path(__file__).resolve().parents[2]
 DATASET_PATH = APP_DIR / "data" / "training" / "behavior_dataset.csv"
@@ -15,11 +12,22 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         try:
+            import pandas as pd
+            from sklearn.model_selection import train_test_split
+            from sklearn.preprocessing import LabelEncoder
+        except ImportError as exc:
+            raise CommandError(
+                "Training dependencies are not installed. Install pandas and scikit-learn to train the behavior model."
+            ) from exc
+
+        try:
             from tensorflow.keras import Sequential
             from tensorflow.keras.layers import Dense, Dropout
             from tensorflow.keras.utils import to_categorical
         except ImportError as exc:
-            raise CommandError("TensorFlow is required to train the behavior model.") from exc
+            raise CommandError(
+                "TensorFlow is required to train the behavior model."
+            ) from exc
 
         if not DATASET_PATH.exists():
             raise CommandError(f"Training dataset not found at {DATASET_PATH}")
