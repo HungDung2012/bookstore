@@ -22,7 +22,9 @@ class UpstreamClient:
         self.timeout = timeout
 
     def _get(self, url):
-        return requests.get(url, timeout=self.timeout).json()
+        response = requests.get(url, timeout=self.timeout)
+        response.raise_for_status()
+        return response.json()
 
     def get_books(self):
         return self._get(f"{BOOK_SERVICE_URL}/books/")

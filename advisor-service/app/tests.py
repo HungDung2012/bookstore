@@ -1,3 +1,4 @@
+import io
 import csv
 import importlib
 import os
@@ -10,6 +11,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from app.services import clients
+from app.management.commands import prepare_behavior_data
 from app.services.features import build_behavior_features, infer_behavior_label
 
 
@@ -162,7 +164,7 @@ class AdvisorApiTests(TestCase):
         self.assertEqual(infer_behavior_label(features), "tech_reader")
 
     @patch("app.management.commands.prepare_behavior_data.UpstreamClient")
-    def test_prepare_behavior_data_command_writes_a_csv_dataset(self, client_mock):
+    def test_prepare_behavior_data_command_writes_to_app_path_independent_of_cwd(self, client_mock):
         client = client_mock.return_value
         client.get_books.return_value = [
             {"id": 1, "title": "Python 101", "price": "20.00", "category": 3, "publisher": 9},
@@ -180,7 +182,7 @@ class AdvisorApiTests(TestCase):
             os.chdir(tmp_dir)
             try:
                 call_command("prepare_behavior_data", verbosity=0)
-                output_path = Path("app/data/training/behavior_dataset.csv")
+                output_path = prepare_behavior_data.OUTPUT_PATH
                 self.assertTrue(output_path.exists())
 
                 with output_path.open("r", encoding="utf-8") as csvfile:
@@ -189,6 +191,43 @@ class AdvisorApiTests(TestCase):
                 self.assertEqual(len(rows), 20)
                 self.assertEqual(rows[0]["label"], "tech_reader")
             finally:
+                if prepare_behavior_data.OUTPUT_PATH.exists():
+                    prepare_behavior_data.OUTPUT_PATH.unlink()
+                os.chdir(original_cwd)
+
+    @patch("app.management.commands.prepare_behavior_data.UpstreamClient")
+    def test_prepare_behavior_data_command_logs_skipped_user_and_continues(self, client_mock):
+        client = client_mock.return_value
+        client.get_books.return_value = [
+            {"id": 1, "title": "Python 101", "price": "20.00", "category": 3, "publisher": 9},
+            {"id": 2, "title": "Poems", "price": "10.00", "category": 5, "publisher": 2},
+        ]
+        client.get_user.side_effect = lambda user_id: (
+            (_ for _ in ()).throw(Exception("boom")) if user_id == 2 else {"id": user_id}
+        )
+        client.get_orders.return_value = [
+            {"id": 1, "total_amount": "40.00", "items": [{"book_id": 1, "quantity": 2}]}
+        ]
+        client.get_reviews.return_value = [{"book_id": 1, "rating": 5}]
+        client.get_cart.return_value = [{"book_id": 2, "quantity": 1}]
+
+        output = io.StringIO()
+        original_cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            os.chdir(tmp_dir)
+            try:
+                call_command("prepare_behavior_data", verbosity=0, stdout=output)
+                output_path = prepare_behavior_data.OUTPUT_PATH
+                self.assertTrue(output_path.exists())
+
+                with output_path.open("r", encoding="utf-8") as csvfile:
+                    rows = list(csv.DictReader(csvfile))
+
+                self.assertEqual(len(rows), 19)
+                self.assertIn("Skipping user 2: boom", output.getvalue())
+            finally:
+                if prepare_behavior_data.OUTPUT_PATH.exists():
+                    prepare_behavior_data.OUTPUT_PATH.unlink()
                 os.chdir(original_cwd)
 
     def test_service_urls_are_normalized_from_env_values(self):
