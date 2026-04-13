@@ -88,3 +88,15 @@ def build_behavior_features(profile, books, orders, reviews, cart_items):
         features[f"publisher_{publisher_id}_count"] = count
 
     return features
+
+
+def infer_behavior_label(features):
+    if features.get("budget_interest_score", 0) >= 1 and features.get("order_count", 0) >= 2:
+        return "bargain_hunter"
+    if features.get("category_3_count", 0) >= max(features.get("category_5_count", 0), 1) * 2:
+        return "tech_reader"
+    if features.get("category_5_count", 0) >= max(features.get("category_3_count", 0), 1) * 2:
+        return "literature_reader"
+    if features.get("category_8_count", 0) >= 2:
+        return "family_reader"
+    return "casual_buyer"

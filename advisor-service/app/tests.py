@@ -1,12 +1,16 @@
+import csv
 import importlib
 import os
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
+from django.core.management import call_command
 from django.test import TestCase
 from rest_framework.test import APIClient
 
 from app.services import clients
-from app.services.features import build_behavior_features
+from app.services.features import build_behavior_features, infer_behavior_label
 
 
 class AdvisorApiTests(TestCase):
@@ -145,6 +149,47 @@ class AdvisorApiTests(TestCase):
         self.assertEqual(premium_result["budget_interest_score"], 0.0)
         self.assertEqual(budget_result["premium_interest_score"], 0.0)
         self.assertEqual(budget_result["budget_interest_score"], 0.0)
+
+    def test_infer_behavior_label_prefers_tech_reader_when_technical_category_dominates(self):
+        features = {
+            "order_count": 4,
+            "total_spent": 120.0,
+            "category_3_count": 8,
+            "category_5_count": 1,
+            "budget_interest_score": 0.0,
+        }
+
+        self.assertEqual(infer_behavior_label(features), "tech_reader")
+
+    @patch("app.management.commands.prepare_behavior_data.UpstreamClient")
+    def test_prepare_behavior_data_command_writes_a_csv_dataset(self, client_mock):
+        client = client_mock.return_value
+        client.get_books.return_value = [
+            {"id": 1, "title": "Python 101", "price": "20.00", "category": 3, "publisher": 9},
+            {"id": 2, "title": "Poems", "price": "10.00", "category": 5, "publisher": 2},
+        ]
+        client.get_user.return_value = {"id": 1}
+        client.get_orders.return_value = [
+            {"id": 1, "total_amount": "40.00", "items": [{"book_id": 1, "quantity": 2}]}
+        ]
+        client.get_reviews.return_value = [{"book_id": 1, "rating": 5}]
+        client.get_cart.return_value = [{"book_id": 2, "quantity": 1}]
+
+        original_cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            os.chdir(tmp_dir)
+            try:
+                call_command("prepare_behavior_data", verbosity=0)
+                output_path = Path("app/data/training/behavior_dataset.csv")
+                self.assertTrue(output_path.exists())
+
+                with output_path.open("r", encoding="utf-8") as csvfile:
+                    rows = list(csv.DictReader(csvfile))
+
+                self.assertEqual(len(rows), 20)
+                self.assertEqual(rows[0]["label"], "tech_reader")
+            finally:
+                os.chdir(original_cwd)
 
     def test_service_urls_are_normalized_from_env_values(self):
         overrides = {
