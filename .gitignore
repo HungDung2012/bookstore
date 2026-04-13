@@ -9,6 +9,7 @@ venv/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.worktrees/
 .DS_Store
 Thumbs.db
 ass05_04.02_dungch.pdf
