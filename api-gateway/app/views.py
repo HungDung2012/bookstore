@@ -545,6 +545,7 @@ def _json_from_upstream(response, service_name):
     return payload, response.status_code
 
 
+@csrf_exempt
 def advisor_chat(request):
     if request.method != "POST":
         return JsonResponse({"error": "Method not allowed"}, status=405)

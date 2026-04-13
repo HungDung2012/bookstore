@@ -87,6 +87,27 @@ class GatewayAdvisorTests(TestCase):
         )
 
     @patch("app.views.requests.post")
+    def test_advisor_chat_accepts_browser_post_without_csrf_token(self, post_mock):
+        browser_client = Client(enforce_csrf_checks=True)
+        gateway_response = Mock(status_code=200)
+        gateway_response.json.return_value = {
+            "answer": "Read more programming books.",
+            "behavior_segment": "tech_reader",
+            "recommended_books": [],
+            "sources": [],
+        }
+        post_mock.return_value = gateway_response
+
+        response = browser_client.post(
+            "/advisor/chat/",
+            '{"question": "Recommend books"}',
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["behavior_segment"], "tech_reader")
+
+    @patch("app.views.requests.post")
     def test_advisor_chat_rejects_malformed_json(self, post_mock):
         response = self.client.post(
             "/advisor/chat/",
