@@ -13,6 +13,7 @@ from rest_framework.test import APIClient
 from app.services import clients
 from app.management.commands import prepare_behavior_data
 from app.services.features import build_behavior_features, infer_behavior_label
+from app.services.behavior_model import BehaviorModelService
 
 
 class AdvisorApiTests(TestCase):
@@ -249,3 +250,19 @@ class AdvisorApiTests(TestCase):
             self.assertEqual(module.USER_SERVICE_URL, "http://user-service.local")
 
         importlib.reload(clients)
+
+    @patch("app.services.behavior_model.load_model")
+    def test_behavior_model_predict_returns_known_label(self, load_model_mock):
+        fake_model = load_model_mock.return_value
+        fake_model.predict.return_value = [[0.8, 0.1, 0.05, 0.03, 0.02]]
+
+        service = BehaviorModelService()
+        result = service.predict(
+            {
+                "order_count": 4,
+                "total_spent": 100.0,
+                "category_3_count": 9,
+            }
+        )
+
+        self.assertEqual(result["behavior_segment"], "tech_reader")
