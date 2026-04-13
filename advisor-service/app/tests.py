@@ -382,4 +382,26 @@ class AdvisorApiTests(TestCase):
         docs = retriever.search("What is your shipping policy?", target_segment="casual_buyer", top_k=2)
 
         self.assertTrue(docs)
+        self.assertEqual(docs[0]["id"], "faq_shipping_policy")
         self.assertIn("shipping", docs[0]["text"].lower())
+
+    def test_retriever_returns_no_docs_for_no_match_even_with_target_segment(self):
+        kb = KnowledgeBaseService("app/data/knowledge_base")
+        retriever = RetrieverService(kb)
+
+        docs = retriever.search("Quantum astronomy hedgehog", target_segment="tech_reader", top_k=2)
+
+        self.assertEqual(docs, [])
+
+    def test_knowledge_base_service_resolves_relative_path_from_app_base(self):
+        original_cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            os.chdir(tmp_dir)
+            try:
+                kb = KnowledgeBaseService("app/data/knowledge_base")
+                docs = kb.load_documents()
+            finally:
+                os.chdir(original_cwd)
+
+        self.assertGreaterEqual(len(docs), 4)
+        self.assertTrue(any(doc["id"] == "faq_shipping_policy" for doc in docs))
