@@ -30,3 +30,24 @@ class AdvisorApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["behavior_segment"], "tech_reader")
+        chat_mock.assert_called_once_with(user_id=1, question="Recommend books")
+
+    def test_chat_endpoint_rejects_missing_user_id(self):
+        response = self.client.post(
+            "/advisor/chat/",
+            {"question": "Recommend books"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("user_id", response.json())
+
+    def test_chat_endpoint_rejects_missing_question(self):
+        response = self.client.post(
+            "/advisor/chat/",
+            {"user_id": 1},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("question", response.json())
