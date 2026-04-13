@@ -47,15 +47,24 @@ class AdvisorApiTests(TestCase):
         self.assertEqual(response.json()["behavior_segment"], "tech_reader")
         chat_mock.assert_called_once_with(user_id=1, question="Recommend books")
 
-    def test_chat_endpoint_rejects_missing_user_id(self):
+    @patch("app.services.advisor.AdvisorService.chat")
+    def test_chat_endpoint_allows_missing_user_id_for_anonymous_chat(self, chat_mock):
+        chat_mock.return_value = {
+            "answer": "Try our featured catalog.",
+            "behavior_segment": "casual_buyer",
+            "recommended_books": [],
+            "sources": [],
+            "feature_summary": "Predicted segment is casual_buyer from orders=0, reviews=0.",
+        }
+
         response = self.client.post(
             "/advisor/chat/",
             {"question": "Recommend books"},
             format="json",
         )
 
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("user_id", response.json())
+        self.assertEqual(response.status_code, 200)
+        chat_mock.assert_called_once_with(user_id=None, question="Recommend books")
 
     def test_chat_endpoint_rejects_missing_question(self):
         response = self.client.post(
@@ -450,3 +459,89 @@ class AdvisorServiceTests(TestCase):
 
         self.assertEqual(result["behavior_segment"], "tech_reader")
         self.assertEqual(result["sources"][0]["id"], "segment_tech_reader")
+
+    @patch.dict(os.environ, {}, clear=False)
+    @patch("app.services.advisor.UpstreamClient")
+    @patch("app.services.advisor.BehaviorModelService")
+    @patch("app.services.advisor.RetrieverService")
+    def test_advisor_service_uses_fallback_when_api_key_missing(
+        self, retriever_cls, model_cls, client_cls
+    ):
+        os.environ.pop("OPENAI_API_KEY", None)
+        client = client_cls.return_value
+        client.get_books.return_value = [
+            {"id": 1, "title": "Python 101", "category": 3, "publisher": 2, "price": "20.00"}
+        ]
+        client.get_orders.return_value = []
+        client.get_reviews.return_value = []
+        client.get_cart.return_value = []
+        client.get_user.return_value = {"id": 1, "full_name": "Alice"}
+        model_cls.return_value.predict.return_value = {
+            "behavior_segment": "tech_reader",
+            "probabilities": {"tech_reader": 0.9},
+        }
+        retriever_cls.return_value.search.return_value = []
+
+        result = AdvisorService().chat(user_id=1, question="Recommend books")
+
+        self.assertIn("Python 101", result["answer"])
+        self.assertEqual(
+            result["recommended_books"],
+            [{"id": 1, "title": "Python 101", "category": 3, "publisher": 2, "price": "20.00"}],
+        )
+        self.assertIn("Predicted segment is tech_reader", result["feature_summary"])
+
+    @patch("app.services.advisor.requests.post", side_effect=RuntimeError("boom"))
+    @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=False)
+    @patch("app.services.advisor.UpstreamClient")
+    @patch("app.services.advisor.BehaviorModelService")
+    @patch("app.services.advisor.RetrieverService")
+    def test_advisor_service_uses_fallback_when_llm_request_raises(
+        self, retriever_cls, model_cls, client_cls, post_mock
+    ):
+        client = client_cls.return_value
+        client.get_books.return_value = [
+            {"id": 1, "category": 3, "publisher": 2, "price": "20.00"},
+            {"id": 2, "title": "", "category": 3, "publisher": 2, "price": "18.00"},
+        ]
+        client.get_orders.return_value = []
+        client.get_reviews.return_value = []
+        client.get_cart.return_value = []
+        client.get_user.return_value = {"id": 1, "full_name": "Alice"}
+        model_cls.return_value.predict.return_value = {
+            "behavior_segment": "tech_reader",
+            "probabilities": {"tech_reader": 0.9},
+        }
+        retriever_cls.return_value.search.return_value = []
+
+        result = AdvisorService().chat(user_id=1, question="Recommend books")
+
+        self.assertIn("our featured catalog", result["answer"])
+        self.assertEqual(result["behavior_segment"], "tech_reader")
+        post_mock.assert_called_once()
+
+    @patch.dict(os.environ, {}, clear=False)
+    @patch("app.services.advisor.UpstreamClient")
+    @patch("app.services.advisor.BehaviorModelService")
+    @patch("app.services.advisor.RetrieverService")
+    def test_advisor_service_supports_anonymous_chat_without_user_fetch(
+        self, retriever_cls, model_cls, client_cls
+    ):
+        os.environ.pop("OPENAI_API_KEY", None)
+        client = client_cls.return_value
+        client.get_books.return_value = [
+            {"id": 1, "title": "Python 101", "category": 3, "publisher": 2, "price": "20.00"}
+        ]
+        model_cls.return_value.predict.return_value = {
+            "behavior_segment": "casual_buyer",
+            "probabilities": {"casual_buyer": 0.8},
+        }
+        retriever_cls.return_value.search.return_value = []
+
+        result = AdvisorService().chat(question="Recommend something")
+
+        self.assertEqual(result["behavior_segment"], "casual_buyer")
+        client.get_user.assert_not_called()
+        client.get_orders.assert_not_called()
+        client.get_reviews.assert_not_called()
+        client.get_cart.assert_not_called()

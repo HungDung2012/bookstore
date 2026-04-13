@@ -21,7 +21,15 @@ Answer in a concise and grounded way. Explain why the recommendations match the 
 
 
 def build_fallback_answer(question, behavior_segment, recommended_books):
-    book_names = ", ".join(book["title"] for book in recommended_books[:3]) or "our featured catalog"
+    book_names = ", ".join(
+        title
+        for title in (
+            book.get("title")
+            for book in recommended_books[:3]
+            if isinstance(book, dict)
+        )
+        if title
+    ) or "our featured catalog"
     return (
         f"Based on your behavior segment `{behavior_segment}`, I recommend starting with {book_names}. "
         f"This matches your recent shopping pattern. For service questions, I will answer using the bookstore knowledge base."
