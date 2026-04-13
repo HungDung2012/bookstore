@@ -5,6 +5,8 @@ from django.views.generic import RedirectView
 from app.views import (
     add_review,
     add_to_cart,
+    advisor_chat,
+    advisor_profile,
     book_create,
     book_delete,
     book_detail,
@@ -34,6 +36,8 @@ urlpatterns = [
     path("register/", register_view, name="register"),
     path("logout/", logout_view, name="logout"),
     path("profile/", profile_view, name="profile"),
+    path("advisor/chat/", advisor_chat, name="advisor_chat"),
+    path("advisor/profile/", advisor_profile, name="advisor_profile"),
     path("books/", book_list, name="book_list"),
     path("books/create/", book_create, name="book_create"),
     path("books/<int:pk>/", book_detail, name="book_detail"),

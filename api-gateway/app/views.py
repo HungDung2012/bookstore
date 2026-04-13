@@ -1,3 +1,4 @@
+import json
 import os
 
 import requests
@@ -21,6 +22,7 @@ ORDER_SERVICE_URL = _service_url("ORDER_SERVICE_URL", "order-service:8000")
 PAYMENT_SERVICE_URL = _service_url("PAYMENT_SERVICE_URL", "payment-service:8000")
 REVIEW_SERVICE_URL = _service_url("REVIEW_SERVICE_URL", "review-service:8000")
 NOTIFICATION_SERVICE_URL = _service_url("NOTIFICATION_SERVICE_URL", "notification-service:8000")
+ADVISOR_SERVICE_URL = _service_url("ADVISOR_SERVICE_URL", "advisor-service:8000")
 
 
 def _get_user(request):
@@ -515,3 +517,33 @@ def notifications_view(request):
     except requests.exceptions.RequestException:
         notifications = []
     return render(request, "notifications.html", {"notifications": notifications, "user": user})
+
+
+@csrf_exempt
+def advisor_chat(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+
+    user, _ = _get_user(request)
+    body = json.loads(request.body or "{}")
+    payload = {
+        "question": body.get("question", ""),
+        "user_id": user["id"] if user else None,
+    }
+    try:
+        response = requests.post(f"{ADVISOR_SERVICE_URL}/advisor/chat/", json=payload, timeout=15)
+        return JsonResponse(response.json(), status=response.status_code)
+    except requests.exceptions.RequestException as exc:
+        return JsonResponse({"error": f"Advisor service unavailable: {exc}"}, status=503)
+
+
+def advisor_profile(request):
+    user, _ = _get_user(request)
+    if not user:
+        return JsonResponse({"error": "Authentication required"}, status=401)
+
+    try:
+        response = requests.get(f"{ADVISOR_SERVICE_URL}/advisor/profile/{user['id']}/", timeout=10)
+        return JsonResponse(response.json(), status=response.status_code)
+    except requests.exceptions.RequestException as exc:
+        return JsonResponse({"error": f"Advisor service unavailable: {exc}"}, status=503)
