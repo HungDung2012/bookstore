@@ -47,15 +47,35 @@ class AdvisorService:
         response.raise_for_status()
         return response.json()["choices"][0]["message"]["content"]
 
-    def chat(self, user_id=None, question=""):
+    def _collect_behavior_inputs(self, user_id=None):
         books = self.client.get_books()
-        profile = {"id": user_id} if not user_id else self.client.get_user(user_id)
-        orders = self.client.get_orders(user_id) if user_id else []
-        reviews = self.client.get_reviews(user_id) if user_id else []
-        cart_items = self.client.get_cart(user_id) if user_id else []
+        if user_id is None:
+            profile = {"id": user_id}
+            orders = []
+            reviews = []
+            cart_items = []
+        else:
+            profile = self.client.get_user(user_id)
+            orders = self.client.get_orders(user_id)
+            reviews = self.client.get_reviews(user_id)
+            cart_items = self.client.get_cart(user_id)
+        return books, profile, orders, reviews, cart_items
 
+    def _predict_behavior(self, profile, books, orders, reviews, cart_items):
         features = build_behavior_features(profile, books, orders, reviews, cart_items)
         prediction = self.model_service.predict(features)
+        return features, prediction
+
+    def _profile_fallback_payload(self):
+        return {
+            "behavior_segment": "casual_buyer",
+            "feature_summary": "Profile unavailable; using fallback behavior segment.",
+        }
+
+    def chat(self, user_id=None, question=""):
+        books, profile, orders, reviews, cart_items = self._collect_behavior_inputs(user_id)
+
+        features, prediction = self._predict_behavior(profile, books, orders, reviews, cart_items)
         behavior_segment = prediction["behavior_segment"]
         recommended_books = self._pick_books(books, behavior_segment)
         sources = self.retriever.search(question, target_segment=behavior_segment, top_k=3)
@@ -89,15 +109,19 @@ class AdvisorService:
         }
 
     def profile(self, user_id):
-        books = self.client.get_books()
-        profile = self.client.get_user(user_id)
-        orders = self.client.get_orders(user_id)
-        reviews = self.client.get_reviews(user_id)
-        cart_items = self.client.get_cart(user_id)
-        features = build_behavior_features(profile, books, orders, reviews, cart_items)
-        prediction = self.model_service.predict(features)
-        prediction["feature_summary"] = (
-            f"Predicted segment is {prediction['behavior_segment']} from "
-            f"{features['order_count']} orders and {features['review_count']} reviews."
-        )
-        return prediction
+        try:
+            books, profile, orders, reviews, cart_items = self._collect_behavior_inputs(user_id)
+            features, prediction = self._predict_behavior(
+                profile,
+                books,
+                orders,
+                reviews,
+                cart_items,
+            )
+            prediction["feature_summary"] = (
+                f"Predicted segment is {prediction['behavior_segment']} from "
+                f"{features['order_count']} orders and {features['review_count']} reviews."
+            )
+            return prediction
+        except Exception:
+            return self._profile_fallback_payload()

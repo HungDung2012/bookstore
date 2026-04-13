@@ -58,6 +58,7 @@ class AdvisorApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["behavior_segment"], "literature_reader")
+        profile_mock.assert_called_once_with(user_id=4)
 
     @patch("app.services.advisor.AdvisorService.chat")
     def test_chat_endpoint_allows_missing_user_id_for_anonymous_chat(self, chat_mock):
@@ -441,6 +442,96 @@ class AdvisorApiTests(TestCase):
 
 
 class AdvisorServiceTests(TestCase):
+    @patch("app.services.advisor.build_behavior_features")
+    @patch("app.services.advisor.UpstreamClient")
+    @patch("app.services.advisor.BehaviorModelService")
+    def test_advisor_service_profile_combines_upstream_data_and_prediction(
+        self, model_cls, client_cls, build_features_mock
+    ):
+        client = client_cls.return_value
+        books = [
+            {"id": 1, "title": "Python 101", "category": 3, "publisher": 2, "price": "20.00"}
+        ]
+        profile = {"id": 4, "full_name": "Alice"}
+        orders = [{"id": 1, "total_amount": "40.00"}]
+        reviews = [{"book_id": 1, "rating": 5}]
+        cart_items = [{"book_id": 1, "quantity": 1}]
+
+        client.get_books.return_value = books
+        client.get_user.return_value = profile
+        client.get_orders.return_value = orders
+        client.get_reviews.return_value = reviews
+        client.get_cart.return_value = cart_items
+        build_features_mock.return_value = {
+            "order_count": 1,
+            "review_count": 1,
+        }
+        model_cls.return_value.predict.return_value = {
+            "behavior_segment": "literature_reader",
+            "probabilities": {"literature_reader": 0.9},
+        }
+
+        result = AdvisorService().profile(user_id=4)
+
+        client.get_books.assert_called_once()
+        client.get_user.assert_called_once_with(4)
+        client.get_orders.assert_called_once_with(4)
+        client.get_reviews.assert_called_once_with(4)
+        client.get_cart.assert_called_once_with(4)
+        build_features_mock.assert_called_once_with(profile, books, orders, reviews, cart_items)
+        model_cls.return_value.predict.assert_called_once_with(build_features_mock.return_value)
+        self.assertEqual(result["behavior_segment"], "literature_reader")
+        self.assertEqual(
+            result["feature_summary"],
+            "Predicted segment is literature_reader from 1 orders and 1 reviews.",
+        )
+
+    @patch("app.services.advisor.UpstreamClient")
+    @patch("app.services.advisor.BehaviorModelService")
+    def test_advisor_service_profile_returns_fallback_when_upstream_fetch_fails(
+        self, model_cls, client_cls
+    ):
+        client = client_cls.return_value
+        client.get_books.side_effect = RuntimeError("boom")
+
+        result = AdvisorService().profile(user_id=4)
+
+        self.assertEqual(result["behavior_segment"], "casual_buyer")
+        self.assertEqual(
+            result["feature_summary"],
+            "Profile unavailable; using fallback behavior segment.",
+        )
+        model_cls.return_value.predict.assert_not_called()
+
+    @patch("app.services.advisor.build_behavior_features")
+    @patch("app.services.advisor.UpstreamClient")
+    @patch("app.services.advisor.BehaviorModelService")
+    def test_advisor_service_profile_returns_fallback_when_prediction_fails(
+        self, model_cls, client_cls, build_features_mock
+    ):
+        client = client_cls.return_value
+        books = [{"id": 1, "title": "Poems", "category": 5, "publisher": 2, "price": "10.00"}]
+        profile = {"id": 4, "full_name": "Alice"}
+
+        client.get_books.return_value = books
+        client.get_user.return_value = profile
+        client.get_orders.return_value = []
+        client.get_reviews.return_value = []
+        client.get_cart.return_value = []
+        build_features_mock.return_value = {
+            "order_count": 0,
+            "review_count": 0,
+        }
+        model_cls.return_value.predict.side_effect = RuntimeError("boom")
+
+        result = AdvisorService().profile(user_id=4)
+
+        self.assertEqual(result["behavior_segment"], "casual_buyer")
+        self.assertEqual(
+            result["feature_summary"],
+            "Profile unavailable; using fallback behavior segment.",
+        )
+
     @patch("app.services.advisor.UpstreamClient")
     @patch("app.services.advisor.BehaviorModelService")
     @patch("app.services.advisor.RetrieverService")
