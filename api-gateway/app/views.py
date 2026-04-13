@@ -519,20 +519,50 @@ def notifications_view(request):
     return render(request, "notifications.html", {"notifications": notifications, "user": user})
 
 
-@csrf_exempt
+def _parse_json_body(request):
+    raw_body = request.body or b""
+    if not raw_body.strip():
+        return {}
+
+    try:
+        body = json.loads(raw_body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError):
+        raise ValueError("Invalid JSON payload")
+
+    if not isinstance(body, dict):
+        raise ValueError("Invalid JSON payload")
+
+    return body
+
+
+def _json_from_upstream(response, service_name):
+    try:
+        payload = response.json()
+    except ValueError:
+        status = response.status_code if response.status_code >= 400 else 502
+        return {"error": f"{service_name} returned a non-JSON response"}, status
+
+    return payload, response.status_code
+
+
 def advisor_chat(request):
     if request.method != "POST":
         return JsonResponse({"error": "Method not allowed"}, status=405)
 
     user, _ = _get_user(request)
-    body = json.loads(request.body or "{}")
+    try:
+        body = _parse_json_body(request)
+    except ValueError:
+        return JsonResponse({"error": "Invalid JSON request body"}, status=400)
+
     payload = {
         "question": body.get("question", ""),
         "user_id": user["id"] if user else None,
     }
     try:
         response = requests.post(f"{ADVISOR_SERVICE_URL}/advisor/chat/", json=payload, timeout=15)
-        return JsonResponse(response.json(), status=response.status_code)
+        payload, status = _json_from_upstream(response, "Advisor service")
+        return JsonResponse(payload, status=status, safe=isinstance(payload, dict))
     except requests.exceptions.RequestException as exc:
         return JsonResponse({"error": f"Advisor service unavailable: {exc}"}, status=503)
 
@@ -544,6 +574,7 @@ def advisor_profile(request):
 
     try:
         response = requests.get(f"{ADVISOR_SERVICE_URL}/advisor/profile/{user['id']}/", timeout=10)
-        return JsonResponse(response.json(), status=response.status_code)
+        payload, status = _json_from_upstream(response, "Advisor service")
+        return JsonResponse(payload, status=status, safe=isinstance(payload, dict))
     except requests.exceptions.RequestException as exc:
         return JsonResponse({"error": f"Advisor service unavailable: {exc}"}, status=503)
