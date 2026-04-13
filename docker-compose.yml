@@ -13,6 +13,9 @@ services:
       - payment-service
       - review-service
       - notification-service
+      - advisor-service
+    environment:
+      ADVISOR_SERVICE_URL: http://advisor-service:8000
 
   user-service:
     build: ./user-service
@@ -53,3 +56,16 @@ services:
     build: ./notification-service
     ports:
       - "8008:8000"
+
+  advisor-service:
+    build: ./advisor-service
+    ports:
+      - "8009:8000"
+    environment:
+      BOOK_SERVICE_URL: http://book-service:8000
+      ORDER_SERVICE_URL: http://order-service:8000
+      REVIEW_SERVICE_URL: http://review-service:8000
+      CART_SERVICE_URL: http://cart-service:8000
+      USER_SERVICE_URL: http://user-service:8000
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
