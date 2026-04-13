@@ -49,6 +49,18 @@ class GatewayAdvisorTests(TestCase):
     def setUp(self):
         self.client = Client()
 
+    @patch("app.views.requests.get")
+    def test_books_page_contains_ai_advisor_launcher(self, get_mock):
+        books_response = Mock(status_code=200)
+        books_response.json.return_value = []
+        get_mock.return_value = books_response
+
+        response = self.client.get("/books/", secure=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "AI Book Advisor")
+        self.assertContains(response, "advisor-chat-launcher")
+
     @patch("app.views.requests.post")
     def test_advisor_chat_proxy_returns_json(self, post_mock):
         gateway_response = Mock(status_code=200)
