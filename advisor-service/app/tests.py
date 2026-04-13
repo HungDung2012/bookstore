@@ -16,6 +16,7 @@ from app.services.features import build_behavior_features, infer_behavior_label
 from app.services.behavior_model import BehaviorModelService
 from app.services.knowledge_base import KnowledgeBaseService
 from app.services.retriever import RetrieverService
+from app.services.advisor import AdvisorService
 
 
 class AdvisorApiTests(TestCase):
@@ -416,3 +417,36 @@ class AdvisorApiTests(TestCase):
 
         self.assertGreaterEqual(len(docs), 4)
         self.assertTrue(any(doc["id"] == "faq_shipping_policy" for doc in docs))
+
+
+class AdvisorServiceTests(TestCase):
+    @patch("app.services.advisor.UpstreamClient")
+    @patch("app.services.advisor.BehaviorModelService")
+    @patch("app.services.advisor.RetrieverService")
+    def test_advisor_service_combines_behavior_and_sources(
+        self, retriever_cls, model_cls, client_cls
+    ):
+        client = client_cls.return_value
+        client.get_books.return_value = [
+            {"id": 1, "title": "Python 101", "category": 3, "publisher": 2, "price": "20.00"}
+        ]
+        client.get_orders.return_value = []
+        client.get_reviews.return_value = []
+        client.get_cart.return_value = []
+        client.get_user.return_value = {"id": 1, "full_name": "Alice"}
+
+        model_cls.return_value.predict.return_value = {
+            "behavior_segment": "tech_reader",
+            "probabilities": {"tech_reader": 0.9},
+        }
+        retriever_cls.return_value.search.return_value = [
+            {
+                "id": "segment_tech_reader",
+                "text": "Technology readers prefer programming books.",
+            }
+        ]
+
+        result = AdvisorService().chat(user_id=1, question="Recommend books")
+
+        self.assertEqual(result["behavior_segment"], "tech_reader")
+        self.assertEqual(result["sources"][0]["id"], "segment_tech_reader")
