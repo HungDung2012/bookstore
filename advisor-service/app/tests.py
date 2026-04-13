@@ -14,6 +14,8 @@ from app.services import clients
 from app.management.commands import prepare_behavior_data
 from app.services.features import build_behavior_features, infer_behavior_label
 from app.services.behavior_model import BehaviorModelService
+from app.services.knowledge_base import KnowledgeBaseService
+from app.services.retriever import RetrieverService
 
 
 class AdvisorApiTests(TestCase):
@@ -372,3 +374,12 @@ class AdvisorApiTests(TestCase):
         self.assertEqual(result["behavior_segment"], "casual_buyer")
         self.assertEqual(result["probabilities"], {})
         self.assertIn("features artifact missing", "\n".join(logs.output))
+
+    def test_retriever_returns_shipping_document_for_shipping_question(self):
+        kb = KnowledgeBaseService("app/data/knowledge_base")
+        retriever = RetrieverService(kb)
+
+        docs = retriever.search("What is your shipping policy?", target_segment="casual_buyer", top_k=2)
+
+        self.assertTrue(docs)
+        self.assertIn("shipping", docs[0]["text"].lower())

@@ -1,0 +1,12 @@
+[
+  {
+    "id": "policy_returns",
+    "title": "Returns policy",
+    "doc_type": "policy",
+    "source_service": "advisor-service",
+    "category": "operations",
+    "target_segment": "all",
+    "tags": ["returns", "refund", "policy"],
+    "text": "Books can be returned within 7 days if they are unused and in original condition."
+  }
+]

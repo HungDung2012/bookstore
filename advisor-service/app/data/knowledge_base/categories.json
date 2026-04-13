@@ -1,0 +1,12 @@
+[
+  {
+    "id": "category_technology",
+    "title": "Technology books",
+    "doc_type": "category",
+    "source_service": "advisor-service",
+    "category": "catalog",
+    "target_segment": "tech_reader",
+    "tags": ["technology", "programming", "software"],
+    "text": "Technology books cover programming, software engineering, data, and modern tools."
+  }
+]
