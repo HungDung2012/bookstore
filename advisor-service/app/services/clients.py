@@ -1,7 +1,5 @@
 import os
 
-import requests
-
 
 def _service_url(env_name, default):
     value = os.getenv(env_name, default).rstrip("/")
