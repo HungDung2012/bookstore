@@ -17,7 +17,6 @@ class RegisterView(APIView):
             return Response({
                 'message': 'Registration successful',
                 'token': token,
-                'role': user.role,
                 'user': UserProfileSerializer(user).data,
             }, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -38,7 +37,6 @@ class LoginView(APIView):
                     token = generate_token(user)
                     return Response({
                         'token': token,
-                        'role': user.role,
                         'user': UserProfileSerializer(user).data,
                     })
                 else:

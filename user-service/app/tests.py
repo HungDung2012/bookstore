@@ -46,4 +46,4 @@ class UserAuthRoleTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["role"], "staff")
+        self.assertEqual(response.json()["user"]["role"], "staff")

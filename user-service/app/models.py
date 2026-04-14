@@ -4,9 +4,9 @@ import hashlib
 
 class User(models.Model):
     ROLE_CHOICES = [
-        ('admin', 'Admin'),
-        ('staff', 'Staff'),
         ('customer', 'Customer'),
+        ('staff', 'Staff'),
+        ('admin', 'Admin'),
     ]
     username = models.CharField(max_length=150, unique=True)
     email = models.EmailField(unique=True)
