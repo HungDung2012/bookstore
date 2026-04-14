@@ -100,6 +100,24 @@ class GatewayDashboardRoutingTests(TestCase):
 
         self._assert_dashboard_endpoint_is_reachable("/admin/dashboard/", "admin")
 
+    def test_staff_session_redirects_from_admin_dashboard_to_staff_dashboard(self):
+        self._set_user_session({"id": 2, "username": "staff", "role": "staff"})
+
+        response = self.client.get("/admin/dashboard/", secure=True, follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.redirect_chain, [("/staff/dashboard/", 302)])
+        self.assertContains(response, "Staff dashboard")
+
+    def test_customer_session_redirects_from_staff_dashboard_to_customer_dashboard(self):
+        self._set_user_session({"id": 3, "username": "alice", "role": "customer"})
+
+        response = self.client.get("/staff/dashboard/", secure=True, follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.redirect_chain, [("/customer/dashboard/", 302)])
+        self.assertContains(response, "Customer dashboard")
+
     def test_staff_dashboard_endpoint_is_reachable_with_staff_session(self):
         self._set_user_session({"id": 2, "username": "staff", "role": "staff"})
 
