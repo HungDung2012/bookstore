@@ -134,11 +134,39 @@ class GatewayDashboardRoutingTests(TestCase):
         response = self.client.get("/admin/dashboard/", secure=True)
 
         self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            'href="/admin/dashboard/?section=users"',
+            html=False,
+        )
+        self.assertContains(
+            response,
+            'href="/admin/dashboard/?section=products"',
+            html=False,
+        )
         self.assertContains(response, "Manage Users")
         self.assertContains(response, "Manage Products")
+        self.assertNotContains(response, 'href="/profile/">\n                    <i class="fa-solid fa-users-gear"></i> Manage Users', html=False)
+        self.assertNotContains(
+            response,
+            'href="/books/create/">\n                    <i class="fa-solid fa-boxes-stacked"></i> Manage Products',
+            html=False,
+        )
         self.assertNotContains(response, "My Cart")
         self.assertNotContains(response, "My Orders")
         self.assertNotContains(response, "AI Book Advisor")
+
+    def test_admin_dashboard_placeholder_sections_render_under_admin_dashboard(self):
+        self._set_user_session({"id": 1, "username": "admin", "role": "admin"})
+
+        users_response = self.client.get("/admin/dashboard/?section=users", secure=True)
+        products_response = self.client.get("/admin/dashboard/?section=products", secure=True)
+
+        self.assertEqual(users_response.status_code, 200)
+        self.assertContains(users_response, "Manage Users")
+        self.assertContains(products_response, "Manage Products")
+        self.assertNotContains(users_response, "My Cart")
+        self.assertNotContains(products_response, "My Orders")
 
     def test_customer_dashboard_navigation_shows_customer_links_and_advisor(self):
         self._set_user_session({"id": 3, "username": "alice", "role": "customer"})

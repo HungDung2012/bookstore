@@ -625,10 +625,10 @@
                     <i class="fa-solid fa-compass"></i> Dashboard
                 </a>
                 {% if user.role == 'admin' %}
-                <a href="/profile/" class="nav-link {% if '/profile' in request.path %}active{% endif %}">
+                <a href="/admin/dashboard/?section=users" class="nav-link {% if request.path == '/admin/dashboard/' and request.GET.section == 'users' %}active{% endif %}">
                     <i class="fa-solid fa-users-gear"></i> Manage Users
                 </a>
-                <a href="/books/create/" class="nav-link {% if '/books/create/' in request.path or '/books/' in request.path and '/edit/' in request.path %}active{% endif %}">
+                <a href="/admin/dashboard/?section=products" class="nav-link {% if request.path == '/admin/dashboard/' and request.GET.section == 'products' %}active{% endif %}">
                     <i class="fa-solid fa-boxes-stacked"></i> Manage Products
                 </a>
                 {% elif user.role == 'customer' %}

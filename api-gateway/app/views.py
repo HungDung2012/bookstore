@@ -143,18 +143,35 @@ def role_dashboard_view(request, role):
     if request.path != target:
         return redirect(target)
 
+    admin_sections = {
+        "users": {
+            "page_title": "Manage Users",
+            "page_description": "User management placeholder while the admin dashboard is being built.",
+        },
+        "products": {
+            "page_title": "Manage Products",
+            "page_description": "Product management placeholder while the admin dashboard is being built.",
+        },
+    }
     role_descriptions = {
         "admin": "Overview placeholder while management dashboards are being built.",
         "staff": "Overview placeholder while staff workflows are being built.",
         "customer": "Overview placeholder while the customer dashboard is being built.",
     }
+    page_title = f"{role.title()} dashboard"
+    page_description = role_descriptions.get(role, "Dashboard placeholder.")
+    if role == "admin":
+        admin_section = admin_sections.get(request.GET.get("section"))
+        if admin_section:
+            page_title = admin_section["page_title"]
+            page_description = admin_section["page_description"]
     return render(
         request,
         "base.html",
         {
             "user": user,
-            "page_title": f"{role.title()} dashboard",
-            "page_description": role_descriptions.get(role, "Dashboard placeholder."),
+            "page_title": page_title,
+            "page_description": page_description,
         },
     )
 
