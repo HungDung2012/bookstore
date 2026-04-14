@@ -589,6 +589,47 @@ def checkout(request):
             response = requests.post(f"{ORDER_SERVICE_URL}/orders/", json=data, timeout=10)
             if response.status_code == 201:
                 order = response.json()
+                if data["payment_method"] in {"demo_success", "demo_fail"}:
+                    payment_payload = {
+                        "order_id": order["id"],
+                        "amount": checkout_context["total_amount"],
+                        "method": data["payment_method"],
+                    }
+                    payment_message = "Payment completed."
+                    payment = None
+                    payment_status = "completed"
+                    try:
+                        payment_response = requests.post(
+                            f"{PAYMENT_SERVICE_URL}/payments/",
+                            json=payment_payload,
+                            timeout=10,
+                        )
+                        try:
+                            payment_data = payment_response.json()
+                        except ValueError:
+                            payment_data = {}
+                        payment = payment_data.get("payment")
+                        payment_message = payment_data.get("message", payment_message)
+                        payment_status = (
+                            payment.get("status")
+                            if isinstance(payment, dict) and payment.get("status")
+                            else "failed"
+                        )
+                    except requests.exceptions.RequestException as exc:
+                        payment_message = f"Demo payment could not be processed: {exc}"
+                        payment_status = "failed"
+
+                    return render(
+                        request,
+                        "payment_result.html",
+                        {
+                            "user": user,
+                            "order": order,
+                            "payment": payment,
+                            "payment_status": payment_status,
+                            "message": payment_message,
+                        },
+                    )
                 return redirect(f"/orders/{order['id']}/")
             error = response.json().get("error", "Checkout failed")
             return render(request, "checkout.html", {"error": error, "user": user, **checkout_context})
