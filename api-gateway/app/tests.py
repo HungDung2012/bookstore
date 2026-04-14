@@ -82,6 +82,65 @@ class GatewayAuthTests(TestCase):
             {"customer_id": 1, "book_id": 7, "quantity": 3},
         )
 
+    @patch("app.views.requests.post")
+    @patch("app.views.requests.get")
+    def test_checkout_submits_authenticated_customer_cart_to_order_service(self, get_mock, post_mock):
+        session = self.client.session
+        session["token"] = "demo-token"
+        session["user"] = {
+            "id": 3,
+            "username": "customer1",
+            "role": "customer",
+            "full_name": "Customer One",
+            "phone": "0900000000",
+            "address": "123 Main St",
+        }
+        session.save()
+        self.client.cookies[settings.SESSION_COOKIE_NAME] = session.session_key
+
+        cart_response = Mock(status_code=200)
+        cart_response.json.return_value = [
+            {"id": 11, "book_id": 7, "quantity": 2, "book_title": "Dune", "book_price": "19.99"},
+            {"id": 12, "book_id": 8, "quantity": 1, "book_title": "Sapiens", "book_price": "14.50"},
+        ]
+        get_mock.return_value = cart_response
+
+        order_response = Mock(status_code=201)
+        order_response.json.return_value = {"id": 44, "user_id": 3, "status": "pending"}
+        post_mock.return_value = order_response
+
+        response = self.client.post(
+            "/checkout/",
+            {
+                "shipping_name": "Customer One",
+                "shipping_phone": "0900000000",
+                "shipping_address": "123 Main St",
+                "payment_method": "cod",
+                "note": "Leave at front desk",
+            },
+            secure=True,
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, "/orders/44/")
+        get_mock.assert_called_once_with("http://cart-service:8000/carts/3/", timeout=5)
+        post_mock.assert_called_once_with(
+            "http://order-service:8000/orders/",
+            json={
+                "user_id": 3,
+                "shipping_name": "Customer One",
+                "shipping_phone": "0900000000",
+                "shipping_address": "123 Main St",
+                "note": "Leave at front desk",
+                "payment_method": "cod",
+                "items": [
+                    {"book_id": 7, "quantity": 2, "book_title": "Dune", "unit_price": "19.99"},
+                    {"book_id": 8, "quantity": 1, "book_title": "Sapiens", "unit_price": "14.50"},
+                ],
+            },
+            timeout=10,
+        )
+
 
 class GatewayDashboardRoutingTests(TestCase):
     def setUp(self):

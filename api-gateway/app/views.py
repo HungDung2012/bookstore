@@ -1,5 +1,6 @@
 import json
 import os
+from decimal import Decimal
 
 import requests
 from django.http import HttpResponseForbidden, JsonResponse
@@ -470,6 +471,59 @@ def view_cart(request, customer_id):
     return render(request, "cart.html", {"items": items, "customer_id": customer_id, "user": user})
 
 
+def _checkout_context_for_user(user):
+    try:
+        cart_resp = requests.get(f"{CART_SERVICE_URL}/carts/{user['id']}/", timeout=5)
+        if cart_resp.status_code != 200:
+            return {"items": [], "total_amount": "0.00", "error": "Cart not found or empty"}
+        cart_items = cart_resp.json()
+    except requests.exceptions.RequestException as exc:
+        return {"items": [], "total_amount": "0.00", "error": f"Cart service unavailable: {exc}"}
+
+    if not cart_items:
+        return {"items": [], "total_amount": "0.00", "error": "Your cart is empty"}
+
+    books = {}
+    if any("book_title" not in item or "book_price" not in item for item in cart_items):
+        try:
+            books_resp = requests.get(f"{BOOK_SERVICE_URL}/books/", timeout=5)
+            books_resp.raise_for_status()
+            books = {book["id"]: book for book in books_resp.json()}
+        except requests.exceptions.RequestException as exc:
+            return {"items": [], "total_amount": "0.00", "error": f"Book service unavailable: {exc}"}
+
+    checkout_items = []
+    total_amount = Decimal("0.00")
+    for item in cart_items:
+        book_title = item.get("book_title")
+        unit_price_value = item.get("book_price")
+        if book_title is None or unit_price_value is None:
+            book = books.get(item.get("book_id"))
+            if not book:
+                return {"items": [], "total_amount": "0.00", "error": f"Book {item.get('book_id')} not found"}
+            book_title = book["title"]
+            unit_price_value = book["price"]
+
+        unit_price = Decimal(str(unit_price_value))
+        quantity = int(item["quantity"])
+        checkout_items.append(
+            {
+                "book_id": item["book_id"],
+                "quantity": quantity,
+                "book_title": book_title,
+                "unit_price": f"{unit_price:.2f}",
+                "subtotal": f"{(unit_price * quantity):.2f}",
+            }
+        )
+        total_amount += unit_price * quantity
+
+    return {
+        "items": checkout_items,
+        "total_amount": f"{total_amount:.2f}",
+        "error": None,
+    }
+
+
 @csrf_exempt
 def update_cart_item(request, customer_id):
     user, _, response = _require_matching_user(request, customer_id)
@@ -509,7 +563,11 @@ def checkout(request):
     user, _ = _get_user(request)
     if not user:
         return redirect("/login/")
+    checkout_context = _checkout_context_for_user(user)
     if request.method == "POST":
+        if checkout_context["error"]:
+            return render(request, "checkout.html", {"error": checkout_context["error"], "user": user, **checkout_context})
+
         data = {
             "user_id": user["id"],
             "shipping_name": request.POST.get("shipping_name"),
@@ -517,32 +575,27 @@ def checkout(request):
             "shipping_address": request.POST.get("shipping_address"),
             "note": request.POST.get("note", ""),
             "payment_method": request.POST.get("payment_method", "cod"),
+            "items": [
+                {
+                    "book_id": item["book_id"],
+                    "quantity": item["quantity"],
+                    "book_title": item["book_title"],
+                    "unit_price": item["unit_price"],
+                }
+                for item in checkout_context["items"]
+            ],
         }
         try:
-            response = requests.post(f"{ORDER_SERVICE_URL}/orders/checkout/", json=data, timeout=10)
+            response = requests.post(f"{ORDER_SERVICE_URL}/orders/", json=data, timeout=10)
             if response.status_code == 201:
                 order = response.json()
-                try:
-                    requests.post(
-                        f"{NOTIFICATION_SERVICE_URL}/notifications/",
-                        json={
-                            "user_id": user["id"],
-                            "type": "order_confirmed",
-                            "title": f"Order #{order['id']} placed!",
-                            "message": f"Your order of ${order['total_amount']} has been placed successfully.",
-                            "reference_id": order["id"],
-                        },
-                        timeout=3,
-                    )
-                except requests.exceptions.RequestException:
-                    pass
                 return redirect(f"/orders/{order['id']}/")
             error = response.json().get("error", "Checkout failed")
-            return render(request, "checkout.html", {"error": error, "user": user})
+            return render(request, "checkout.html", {"error": error, "user": user, **checkout_context})
         except requests.exceptions.RequestException as exc:
-            return render(request, "checkout.html", {"error": str(exc), "user": user})
+            return render(request, "checkout.html", {"error": str(exc), "user": user, **checkout_context})
 
-    return render(request, "checkout.html", {"user": user})
+    return render(request, "checkout.html", {"user": user, **checkout_context})
 
 
 def order_list(request):

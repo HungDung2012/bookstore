@@ -10,6 +10,47 @@ class OrderStatusTests(TestCase):
     def setUp(self):
         self.client = APIClient()
 
+    def test_order_service_creates_order_from_cart_payload(self):
+        response = self.client.post(
+            "/orders/",
+            {
+                "user_id": 3,
+                "shipping_name": "Customer One",
+                "shipping_phone": "0900000000",
+                "shipping_address": "123 Main St",
+                "payment_method": "cod",
+                "note": "Leave at front desk",
+                "items": [
+                    {
+                        "book_id": 1,
+                        "quantity": 2,
+                        "book_title": "Dune",
+                        "unit_price": "19.99",
+                    },
+                    {
+                        "book_id": 5,
+                        "quantity": 1,
+                        "book_title": "Sapiens",
+                        "unit_price": "14.50",
+                    },
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["user_id"], 3)
+        self.assertEqual(response.data["status"], "pending")
+        self.assertEqual(response.data["shipping_name"], "Customer One")
+        self.assertEqual(response.data["total_amount"], "54.48")
+        self.assertEqual(len(response.data["items"]), 2)
+
+        order = Order.objects.get()
+        self.assertEqual(order.user_id, 3)
+        self.assertEqual(order.status, "pending")
+        self.assertEqual(str(order.total_amount), "54.48")
+        self.assertEqual(order.items.count(), 2)
+
     @patch("app.views.requests.post")
     def test_pending_order_can_move_to_paid_and_confirms_inventory(self, mock_post):
         confirm_response = Mock(status_code=200)

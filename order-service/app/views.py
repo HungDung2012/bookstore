@@ -28,6 +28,45 @@ def _order_items_payload(order):
     return [{"book_id": item.book_id, "quantity": item.quantity} for item in order.items.all()]
 
 
+def _normalize_order_items(items):
+    if not isinstance(items, list) or not items:
+        raise ValueError("Order items are required")
+
+    normalized_items = []
+    total = Decimal("0.00")
+
+    for item in items:
+        if not isinstance(item, dict):
+            raise ValueError("Each order item must be an object")
+
+        try:
+            book_id = int(item["book_id"])
+            quantity = int(item["quantity"])
+            book_title = str(item["book_title"]).strip()
+            unit_price = Decimal(str(item["unit_price"]))
+        except (KeyError, TypeError, ValueError):
+            raise ValueError("Order items must include book_id, quantity, book_title, and unit_price")
+
+        if quantity <= 0:
+            raise ValueError("Order item quantity must be positive")
+        if not book_title:
+            raise ValueError("Order item title is required")
+        if unit_price < 0:
+            raise ValueError("Order item price must not be negative")
+
+        normalized_items.append(
+            {
+                "book_id": book_id,
+                "quantity": quantity,
+                "book_title": book_title,
+                "unit_price": unit_price,
+            }
+        )
+        total += unit_price * quantity
+
+    return normalized_items, total
+
+
 def _sync_inventory_for_cancellation(order):
     items = _order_items_payload(order)
     if not items:
@@ -54,6 +93,30 @@ class OrderListView(APIView):
         serializer = OrderSerializer(orders, many=True)
         return Response(serializer.data)
 
+    def post(self, request):
+        serializer = CheckoutSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            items, total = _normalize_order_items(request.data.get("items"))
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        order = Order.objects.create(
+            user_id=serializer.validated_data["user_id"],
+            status="pending",
+            total_amount=total,
+            shipping_name=serializer.validated_data["shipping_name"],
+            shipping_phone=serializer.validated_data["shipping_phone"],
+            shipping_address=serializer.validated_data["shipping_address"],
+            note=serializer.validated_data.get("note", ""),
+        )
+        for item_data in items:
+            OrderItem.objects.create(order=order, **item_data)
+
+        return Response(OrderSerializer(order).data, status=status.HTTP_201_CREATED)
+
 
 class OrderDetailView(APIView):
     def get(self, request, pk):
@@ -63,149 +126,7 @@ class OrderDetailView(APIView):
 
 class CheckoutView(APIView):
     def post(self, request):
-        serializer = CheckoutSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-        data = serializer.validated_data
-        user_id = data["user_id"]
-        payment_method = data["payment_method"]
-
-        try:
-            cart_resp = requests.get(f"{CART_SERVICE_URL}/carts/{user_id}/", timeout=5)
-            if cart_resp.status_code != 200:
-                return Response(
-                    {"error": "Cart not found or empty"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            cart_items = cart_resp.json()
-            if not cart_items:
-                return Response({"error": "Cart is empty"}, status=status.HTTP_400_BAD_REQUEST)
-        except requests.exceptions.RequestException as exc:
-            return Response(
-                {"error": f"Cart service unavailable: {exc}"},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
-
-        try:
-            books_resp = requests.get(f"{BOOK_SERVICE_URL}/books/", timeout=5)
-            books_resp.raise_for_status()
-            books = {book["id"]: book for book in books_resp.json()}
-        except requests.exceptions.RequestException as exc:
-            return Response(
-                {"error": f"Book service unavailable: {exc}"},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
-
-        order_items_data = []
-        inventory_items = []
-        total = Decimal("0.00")
-
-        for item in cart_items:
-            book_id = item["book_id"]
-            quantity = item["quantity"]
-            book = books.get(book_id)
-            if not book:
-                return Response(
-                    {"error": f"Book {book_id} not found"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            price = Decimal(str(book["price"]))
-            total += price * quantity
-            order_items_data.append(
-                {
-                    "book_id": book_id,
-                    "book_title": book["title"],
-                    "quantity": quantity,
-                    "unit_price": price,
-                }
-            )
-            inventory_items.append({"book_id": book_id, "quantity": quantity})
-
-        try:
-            reserve_resp = requests.post(
-                f"{INVENTORY_SERVICE_URL}/inventory/reserve/",
-                json={"items": inventory_items},
-                timeout=5,
-            )
-            if reserve_resp.status_code != 200:
-                error = reserve_resp.json().get("error", "Stock reservation failed")
-                return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
-        except requests.exceptions.RequestException as exc:
-            return Response(
-                {"error": f"Inventory service unavailable: {exc}"},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
-
-        order = Order.objects.create(
-            user_id=user_id,
-            status="pending",
-            total_amount=total,
-            shipping_name=data["shipping_name"],
-            shipping_phone=data["shipping_phone"],
-            shipping_address=data["shipping_address"],
-            note=data.get("note", ""),
-        )
-        for item_data in order_items_data:
-            OrderItem.objects.create(order=order, **item_data)
-
-        try:
-            payment_resp = requests.post(
-                f"{PAYMENT_SERVICE_URL}/payments/",
-                json={
-                    "order_id": order.id,
-                    "amount": str(total),
-                    "method": payment_method,
-                },
-                timeout=5,
-            )
-            if payment_resp.status_code not in (status.HTTP_200_OK, status.HTTP_201_CREATED):
-                raise requests.exceptions.RequestException(payment_resp.text)
-
-            if payment_method == "cod":
-                confirm_resp = requests.post(
-                    f"{INVENTORY_SERVICE_URL}/inventory/confirm/",
-                    json={"items": inventory_items},
-                    timeout=5,
-                )
-                if confirm_resp.status_code != 200:
-                    order.status = "cancelled"
-                    order.save(update_fields=["status", "updated_at"])
-                    requests.post(
-                        f"{INVENTORY_SERVICE_URL}/inventory/release/",
-                        json={"items": inventory_items},
-                        timeout=5,
-                    )
-                    return Response(
-                        {"error": "Could not finalize inventory deduction"},
-                        status=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    )
-                order.status = "confirmed"
-                order.save(update_fields=["status", "updated_at"])
-
-            try:
-                requests.delete(f"{CART_SERVICE_URL}/carts/{user_id}/clear/", timeout=5)
-            except requests.exceptions.RequestException:
-                pass
-
-        except requests.exceptions.RequestException:
-            order.status = "cancelled"
-            order.save(update_fields=["status", "updated_at"])
-            try:
-                requests.post(
-                    f"{INVENTORY_SERVICE_URL}/inventory/release/",
-                    json={"items": inventory_items},
-                    timeout=5,
-                )
-            except requests.exceptions.RequestException:
-                pass
-            return Response(
-                {"error": "Payment service unavailable"},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
-
-        return Response(OrderSerializer(order).data, status=status.HTTP_201_CREATED)
+        return OrderListView().post(request)
 
 
 class UpdateOrderStatusView(APIView):
