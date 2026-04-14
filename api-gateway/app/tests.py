@@ -45,6 +45,48 @@ class GatewayAuthTests(TestCase):
         self.assertEqual(response.status_code, 403)
 
 
+class GatewayDashboardRoutingTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+
+    def _set_user_session(self, user):
+        session = self.client.session
+        session["token"] = "demo-token"
+        session["user"] = user
+        session.save()
+        self.client.cookies[settings.SESSION_COOKIE_NAME] = session.session_key
+
+    def test_dashboard_redirects_unauthenticated_users_to_login(self):
+        response = self.client.get("/dashboard/", secure=True)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, "/login/")
+
+    def test_dashboard_redirects_admin_users_to_admin_dashboard(self):
+        self._set_user_session({"id": 1, "username": "admin", "role": "admin"})
+
+        response = self.client.get("/dashboard/", secure=True)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, "/admin/dashboard/")
+
+    def test_dashboard_redirects_staff_users_to_staff_dashboard(self):
+        self._set_user_session({"id": 2, "username": "staff", "role": "staff"})
+
+        response = self.client.get("/dashboard/", secure=True)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, "/staff/dashboard/")
+
+    def test_dashboard_redirects_customer_users_to_customer_dashboard(self):
+        self._set_user_session({"id": 3, "username": "alice", "role": "customer"})
+
+        response = self.client.get("/dashboard/", secure=True)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, "/customer/dashboard/")
+
+
 class GatewayAdvisorTests(TestCase):
     def setUp(self):
         self.client = Client()

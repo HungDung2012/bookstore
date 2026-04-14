@@ -2,7 +2,7 @@ import json
 import os
 
 import requests
-from django.http import HttpResponseForbidden, JsonResponse
+from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.csrf import csrf_exempt
 
@@ -23,6 +23,15 @@ PAYMENT_SERVICE_URL = _service_url("PAYMENT_SERVICE_URL", "payment-service:8000"
 REVIEW_SERVICE_URL = _service_url("REVIEW_SERVICE_URL", "review-service:8000")
 NOTIFICATION_SERVICE_URL = _service_url("NOTIFICATION_SERVICE_URL", "notification-service:8000")
 ADVISOR_SERVICE_URL = _service_url("ADVISOR_SERVICE_URL", "advisor-service:8000")
+
+
+def _dashboard_path_for_role(role):
+    dashboard_paths = {
+        "admin": "/admin/dashboard/",
+        "staff": "/staff/dashboard/",
+        "customer": "/customer/dashboard/",
+    }
+    return dashboard_paths.get(role, "/login/")
 
 
 def _get_user(request):
@@ -116,6 +125,25 @@ def register_view(request):
 def logout_view(request):
     request.session.flush()
     return redirect("/login/")
+
+
+def dashboard_view(request):
+    user, _ = _get_user(request)
+    if not user:
+        return redirect("/login/")
+    return redirect(_dashboard_path_for_role(user.get("role")))
+
+
+def role_dashboard_view(request, role):
+    user, _ = _get_user(request)
+    if not user:
+        return redirect("/login/")
+
+    target = _dashboard_path_for_role(user.get("role"))
+    if request.path != target:
+        return redirect(target)
+
+    return HttpResponse(f"{role.title()} dashboard")
 
 
 def profile_view(request):
