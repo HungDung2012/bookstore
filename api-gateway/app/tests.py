@@ -56,11 +56,12 @@ class GatewayDashboardRoutingTests(TestCase):
         session.save()
         self.client.cookies[settings.SESSION_COOKIE_NAME] = session.session_key
 
-    def _assert_dashboard_endpoint_is_reachable(self, path, role):
+    def _assert_dashboard_endpoint_is_reachable(self, path, role, template_name):
         response = self.client.get(path, secure=True)
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, f"{role.title()} dashboard")
+        self.assertTemplateUsed(response, template_name)
 
     def test_dashboard_redirects_unauthenticated_users_to_login(self):
         response = self.client.get("/dashboard/", secure=True)
@@ -98,7 +99,7 @@ class GatewayDashboardRoutingTests(TestCase):
     def test_admin_dashboard_endpoint_is_reachable_with_admin_session(self):
         self._set_user_session({"id": 1, "username": "admin", "role": "admin"})
 
-        self._assert_dashboard_endpoint_is_reachable("/admin/dashboard/", "admin")
+        self._assert_dashboard_endpoint_is_reachable("/admin/dashboard/", "admin", "dashboard_admin.html")
 
     def test_staff_session_redirects_from_admin_dashboard_to_staff_dashboard(self):
         self._set_user_session({"id": 2, "username": "staff", "role": "staff"})
@@ -121,65 +122,55 @@ class GatewayDashboardRoutingTests(TestCase):
     def test_staff_dashboard_endpoint_is_reachable_with_staff_session(self):
         self._set_user_session({"id": 2, "username": "staff", "role": "staff"})
 
-        self._assert_dashboard_endpoint_is_reachable("/staff/dashboard/", "staff")
+        self._assert_dashboard_endpoint_is_reachable("/staff/dashboard/", "staff", "dashboard_staff.html")
 
     def test_customer_dashboard_endpoint_is_reachable_with_customer_session(self):
         self._set_user_session({"id": 3, "username": "alice", "role": "customer"})
 
-        self._assert_dashboard_endpoint_is_reachable("/customer/dashboard/", "customer")
+        self._assert_dashboard_endpoint_is_reachable("/customer/dashboard/", "customer", "dashboard_customer.html")
 
-    def test_admin_dashboard_navigation_shows_management_links(self):
+    def test_admin_dashboard_renders_summary_cards(self):
         self._set_user_session({"id": 1, "username": "admin", "role": "admin"})
 
         response = self.client.get("/admin/dashboard/", secure=True)
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(
-            response,
-            'href="/admin/dashboard/?section=users"',
-            html=False,
-        )
-        self.assertContains(
-            response,
-            'href="/admin/dashboard/?section=products"',
-            html=False,
-        )
+        self.assertTemplateUsed(response, "dashboard_admin.html")
+        self.assertContains(response, "User Overview")
+        self.assertContains(response, "Catalog Overview")
         self.assertContains(response, "Manage Users")
         self.assertContains(response, "Manage Products")
-        self.assertNotContains(response, 'href="/profile/">\n                    <i class="fa-solid fa-users-gear"></i> Manage Users', html=False)
-        self.assertNotContains(
-            response,
-            'href="/books/create/">\n                    <i class="fa-solid fa-boxes-stacked"></i> Manage Products',
-            html=False,
-        )
-        self.assertNotContains(response, "My Cart")
-        self.assertNotContains(response, "My Orders")
-        self.assertNotContains(response, "AI Book Advisor")
+        self.assertNotContains(response, "Orders To Process")
+        self.assertNotContains(response, "Recommended For You")
 
-    def test_admin_dashboard_placeholder_sections_render_under_admin_dashboard(self):
-        self._set_user_session({"id": 1, "username": "admin", "role": "admin"})
+    def test_staff_dashboard_renders_operational_cards(self):
+        self._set_user_session({"id": 2, "username": "staff", "role": "staff"})
 
-        users_response = self.client.get("/admin/dashboard/?section=users", secure=True)
-        products_response = self.client.get("/admin/dashboard/?section=products", secure=True)
+        response = self.client.get("/staff/dashboard/", secure=True)
 
-        self.assertEqual(users_response.status_code, 200)
-        self.assertContains(users_response, "Manage Users")
-        self.assertContains(products_response, "Manage Products")
-        self.assertNotContains(users_response, "My Cart")
-        self.assertNotContains(products_response, "My Orders")
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "dashboard_staff.html")
+        self.assertContains(response, "Orders To Process")
+        self.assertContains(response, "Shipping Queue")
+        self.assertContains(response, "Inventory Alerts")
+        self.assertNotContains(response, "Catalog Overview")
+        self.assertNotContains(response, "Recommended For You")
 
-    def test_customer_dashboard_navigation_shows_customer_links_and_advisor(self):
+    def test_customer_dashboard_renders_customer_facing_overview(self):
         self._set_user_session({"id": 3, "username": "alice", "role": "customer"})
 
         response = self.client.get("/customer/dashboard/", secure=True)
 
         self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "dashboard_customer.html")
+        self.assertContains(response, "Recommended For You")
+        self.assertContains(response, "Reading Snapshot")
         self.assertContains(response, "My Cart")
         self.assertContains(response, "My Orders")
         self.assertContains(response, "/cart/3/")
-        self.assertNotContains(response, "Manage Users")
-        self.assertNotContains(response, "Manage Products")
         self.assertContains(response, "AI Book Advisor")
+        self.assertNotContains(response, "Orders To Process")
+        self.assertNotContains(response, "Manage Users")
 
 
 class GatewayAdvisorTests(TestCase):

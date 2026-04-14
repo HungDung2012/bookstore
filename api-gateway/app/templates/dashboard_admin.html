@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}Admin dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ page_title }}</h1>
+    <p>{{ page_description }}</p>
+</div>
+
+<section class="grid">
+    <article class="glass-card">
+        <div class="card-header">
+            <div>
+                <h2 class="card-title">User Overview</h2>
+                <p class="card-subtitle">Monitor account growth, permissions, and support-sensitive activity.</p>
+            </div>
+            <span class="price-tag">24h</span>
+        </div>
+        <div class="card-body">
+            <p>Keep onboarding, admin access, and customer account activity visible for quick intervention.</p>
+        </div>
+        <a class="action-btn" href="/admin/dashboard/?section=users">
+            <i class="fa-solid fa-users-gear"></i> Manage Users
+        </a>
+    </article>
+
+    <article class="glass-card">
+        <div class="card-header">
+            <div>
+                <h2 class="card-title">Catalog Overview</h2>
+                <p class="card-subtitle">Review product readiness, assortment gaps, and merchandising follow-up.</p>
+            </div>
+            <span class="price-tag">Live</span>
+        </div>
+        <div class="card-body">
+            <p>Surface the next catalog updates so pricing, stock, and content stay aligned across the storefront.</p>
+        </div>
+        <a class="action-btn" href="/admin/dashboard/?section=products">
+            <i class="fa-solid fa-boxes-stacked"></i> Manage Products
+        </a>
+    </article>
+</section>
+{% endblock %}

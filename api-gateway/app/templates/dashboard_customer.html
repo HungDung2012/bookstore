@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}Customer dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ page_title }}</h1>
+    <p>{{ page_description }}</p>
+</div>
+
+<section class="grid">
+    <article class="glass-card">
+        <div class="card-header">
+            <div>
+                <h2 class="card-title">Recommended For You</h2>
+                <p class="card-subtitle">Continue discovering titles that match your browsing and reading habits.</p>
+            </div>
+            <span class="price-tag">Fresh</span>
+        </div>
+        <div class="card-body">
+            <p>Use the advisor and the catalog together to turn recent interest into your next shortlist.</p>
+        </div>
+        <a class="action-btn" href="/books/">
+            <i class="fa-solid fa-store"></i> Browse Catalog
+        </a>
+    </article>
+
+    <article class="glass-card">
+        <div class="card-header">
+            <div>
+                <h2 class="card-title">Reading Snapshot</h2>
+                <p class="card-subtitle">Keep your active cart, recent orders, and account activity within reach.</p>
+            </div>
+            <span class="price-tag">Now</span>
+        </div>
+        <div class="card-body">
+            <p>Jump back into checkout, track delivery progress, or revisit favorites without leaving your dashboard.</p>
+        </div>
+        <a class="action-btn" href="/cart/{{ user.id }}/">
+            <i class="fa-solid fa-cart-shopping"></i> My Cart
+        </a>
+    </article>
+</section>
+{% endblock %}
