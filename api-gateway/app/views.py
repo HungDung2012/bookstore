@@ -357,6 +357,17 @@ def book_detail(request, pk):
         book_resp = requests.get(f"{BOOK_SERVICE_URL}/books/{pk}/", timeout=5)
         if book_resp.status_code == 200:
             book = book_resp.json()
+            try:
+                category_resp = requests.get(f"{BOOK_SERVICE_URL}/categories/", timeout=5)
+                if category_resp.status_code == 200:
+                    categories = {item["id"]: item["name"] for item in category_resp.json()}
+                    book["category_name"] = categories.get(book.get("category"))
+                publisher_resp = requests.get(f"{BOOK_SERVICE_URL}/publishers/", timeout=5)
+                if publisher_resp.status_code == 200:
+                    publishers = {item["id"]: item["name"] for item in publisher_resp.json()}
+                    book["publisher_name"] = publishers.get(book.get("publisher"))
+            except requests.exceptions.RequestException:
+                pass
         review_resp = requests.get(f"{REVIEW_SERVICE_URL}/reviews/?book_id={pk}", timeout=5)
         if review_resp.status_code == 200:
             reviews = review_resp.json()

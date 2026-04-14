@@ -355,3 +355,61 @@ class GatewayAdvisorTests(TestCase):
 
         self.assertEqual(response.status_code, 503)
         self.assertIn("Advisor service unavailable", response.json()["error"])
+
+
+class GatewayBookDetailTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+
+    @patch("app.views.requests.get")
+    def test_book_detail_page_renders_catalog_information(self, get_mock):
+        def fake_get(url, timeout=5):
+            response = Mock()
+            if url == "http://book-service:8000/books/7/":
+                response.status_code = 200
+                response.json.return_value = {
+                    "id": 7,
+                    "title": "Dune",
+                    "author": "Frank Herbert",
+                    "price": "18.99",
+                    "stock": 45,
+                    "category": 2,
+                    "publisher": 4,
+                }
+                return response
+            if url == "http://book-service:8000/categories/":
+                response.status_code = 200
+                response.json.return_value = [
+                    {"id": 1, "name": "Classic Literature"},
+                    {"id": 2, "name": "Science Fiction"},
+                ]
+                return response
+            if url == "http://book-service:8000/publishers/":
+                response.status_code = 200
+                response.json.return_value = [
+                    {"id": 3, "name": "Vintage Books"},
+                    {"id": 4, "name": "Del Rey"},
+                ]
+                return response
+            if url == "http://review-service:8000/reviews/?book_id=7":
+                response.status_code = 200
+                response.json.return_value = []
+                return response
+            if url == "http://review-service:8000/reviews/rating/7/":
+                response.status_code = 200
+                response.json.return_value = {"average_rating": 4.6, "total_reviews": 12}
+                return response
+            raise AssertionError(f"Unexpected URL {url}")
+
+        get_mock.side_effect = fake_get
+
+        response = self.client.get("/books/7/", secure=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "book_detail.html")
+        self.assertContains(response, "Dune")
+        self.assertContains(response, "Frank Herbert")
+        self.assertContains(response, "$18.99")
+        self.assertContains(response, "45 in stock")
+        self.assertContains(response, "Science Fiction")
+        self.assertContains(response, "Del Rey")
