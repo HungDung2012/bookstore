@@ -128,6 +128,31 @@ class GatewayDashboardRoutingTests(TestCase):
 
         self._assert_dashboard_endpoint_is_reachable("/customer/dashboard/", "customer")
 
+    def test_admin_dashboard_navigation_shows_management_links(self):
+        self._set_user_session({"id": 1, "username": "admin", "role": "admin"})
+
+        response = self.client.get("/admin/dashboard/", secure=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Manage Users")
+        self.assertContains(response, "Manage Products")
+        self.assertNotContains(response, "My Cart")
+        self.assertNotContains(response, "My Orders")
+        self.assertNotContains(response, "AI Book Advisor")
+
+    def test_customer_dashboard_navigation_shows_customer_links_and_advisor(self):
+        self._set_user_session({"id": 3, "username": "alice", "role": "customer"})
+
+        response = self.client.get("/customer/dashboard/", secure=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "My Cart")
+        self.assertContains(response, "My Orders")
+        self.assertContains(response, "/cart/3/")
+        self.assertNotContains(response, "Manage Users")
+        self.assertNotContains(response, "Manage Products")
+        self.assertContains(response, "AI Book Advisor")
+
 
 class GatewayAdvisorTests(TestCase):
     def setUp(self):

@@ -621,15 +621,31 @@
                     <i class="fa-solid fa-store"></i> Catalog
                 </a>
                 {% if user %}
+                <a href="/dashboard/" class="nav-link {% if '/dashboard/' in request.path %}active{% endif %}">
+                    <i class="fa-solid fa-compass"></i> Dashboard
+                </a>
+                {% if user.role == 'admin' %}
+                <a href="/profile/" class="nav-link {% if '/profile' in request.path %}active{% endif %}">
+                    <i class="fa-solid fa-users-gear"></i> Manage Users
+                </a>
+                <a href="/books/create/" class="nav-link {% if '/books/create/' in request.path or '/books/' in request.path and '/edit/' in request.path %}active{% endif %}">
+                    <i class="fa-solid fa-boxes-stacked"></i> Manage Products
+                </a>
+                {% elif user.role == 'customer' %}
                 <a href="/cart/{{ user.id }}/" class="nav-link {% if '/cart/' in request.path %}active{% endif %}">
-                    <i class="fa-solid fa-cart-shopping"></i> Cart
+                    <i class="fa-solid fa-cart-shopping"></i> My Cart
                 </a>
                 <a href="/orders/" class="nav-link {% if '/orders' in request.path %}active{% endif %}">
-                    <i class="fa-solid fa-receipt"></i> Orders
+                    <i class="fa-solid fa-receipt"></i> My Orders
+                </a>
+                {% else %}
+                <a href="/books/create/" class="nav-link {% if '/books/create/' in request.path or '/books/' in request.path and '/edit/' in request.path %}active{% endif %}">
+                    <i class="fa-solid fa-boxes-stacked"></i> Manage Products
                 </a>
                 <a href="/notifications/" class="nav-link {% if '/notifications' in request.path %}active{% endif %}">
                     <i class="fa-solid fa-bell"></i>
                 </a>
+                {% endif %}
                 <a href="/profile/" class="nav-link {% if '/profile' in request.path %}active{% endif %}">
                     <i class="fa-solid fa-circle-user"></i> {{ user.username }}
                 </a>
@@ -650,9 +666,18 @@
 
     <main>
         {% block content %}
+        {% if page_title %}
+        <div class="page-header">
+            <h1>{{ page_title }}</h1>
+            {% if page_description %}
+            <p>{{ page_description }}</p>
+            {% endif %}
+        </div>
+        {% endif %}
         {% endblock %}
     </main>
 
+    {% if not user or user.role == 'customer' %}
     <button id="advisor-chat-launcher" class="advisor-chat-launcher" type="button">
         <i class="fa-solid fa-robot"></i>
         <span>AI Book Advisor</span>
@@ -752,5 +777,6 @@
             }
         });
     </script>
+    {% endif %}
 </body>
 </html>

@@ -2,7 +2,7 @@ import json
 import os
 
 import requests
-from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
+from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.csrf import csrf_exempt
 
@@ -143,7 +143,20 @@ def role_dashboard_view(request, role):
     if request.path != target:
         return redirect(target)
 
-    return HttpResponse(f"{role.title()} dashboard")
+    role_descriptions = {
+        "admin": "Overview placeholder while management dashboards are being built.",
+        "staff": "Overview placeholder while staff workflows are being built.",
+        "customer": "Overview placeholder while the customer dashboard is being built.",
+    }
+    return render(
+        request,
+        "base.html",
+        {
+            "user": user,
+            "page_title": f"{role.title()} dashboard",
+            "page_description": role_descriptions.get(role, "Dashboard placeholder."),
+        },
+    )
 
 
 def profile_view(request):
