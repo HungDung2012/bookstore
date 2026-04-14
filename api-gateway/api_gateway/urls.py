@@ -31,7 +31,6 @@ from app.views import (
 
 
 urlpatterns = [
-    path("admin/", admin.site.urls),
     path("healthz/", health_check, name="health_check"),
     path("", RedirectView.as_view(url="/books/", permanent=False), name="home"),
     path("login/", login_view, name="login"),
@@ -41,6 +40,7 @@ urlpatterns = [
     path("admin/dashboard/", role_dashboard_view, {"role": "admin"}, name="admin_dashboard"),
     path("staff/dashboard/", role_dashboard_view, {"role": "staff"}, name="staff_dashboard"),
     path("customer/dashboard/", role_dashboard_view, {"role": "customer"}, name="customer_dashboard"),
+    path("admin/", admin.site.urls),
     path("profile/", profile_view, name="profile"),
     path("advisor/chat/", advisor_chat, name="advisor_chat"),
     path("advisor/profile/", advisor_profile, name="advisor_profile"),
