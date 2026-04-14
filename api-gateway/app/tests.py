@@ -44,6 +44,44 @@ class GatewayAuthTests(TestCase):
 
         self.assertEqual(response.status_code, 403)
 
+    @patch("app.views.requests.post")
+    @patch("app.views.requests.get")
+    def test_add_to_cart_uses_authenticated_customer_scope(self, get_mock, post_mock):
+        session = self.client.session
+        session["token"] = "demo-token"
+        session["user"] = {"id": 1, "username": "alice", "role": "customer"}
+        session.save()
+        self.client.cookies[settings.SESSION_COOKIE_NAME] = session.session_key
+
+        cart_response = Mock(status_code=404)
+        cart_response.json.return_value = {"error": "Cart not found"}
+        get_mock.return_value = cart_response
+
+        create_response = Mock(status_code=201)
+        create_response.json.return_value = {"id": 8, "customer_id": 1}
+        add_response = Mock(status_code=201)
+        add_response.json.return_value = {"id": 4, "book_id": 7, "quantity": 3}
+        post_mock.side_effect = [create_response, add_response]
+
+        response = self.client.post(
+            "/cart/add/",
+            {"book_id": "7", "quantity": "3", "customer_id": "99"},
+            secure=True,
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, "/cart/1/")
+        get_mock.assert_called_once_with("http://cart-service:8000/carts/1/", timeout=5)
+        self.assertEqual(post_mock.call_count, 2)
+        self.assertEqual(
+            post_mock.call_args_list[0].kwargs["json"],
+            {"customer_id": 1},
+        )
+        self.assertEqual(
+            post_mock.call_args_list[1].kwargs["json"],
+            {"customer_id": 1, "book_id": 7, "quantity": 3},
+        )
+
 
 class GatewayDashboardRoutingTests(TestCase):
     def setUp(self):

@@ -436,7 +436,7 @@ def add_to_cart(request):
         try:
             requests.post(
                 f"{CART_SERVICE_URL}/cart-items/",
-                json={"cart": user_id, "book_id": int(book_id), "quantity": int(quantity)},
+                json={"customer_id": user_id, "book_id": int(book_id), "quantity": int(quantity)},
                 timeout=5,
             )
         except requests.exceptions.RequestException:

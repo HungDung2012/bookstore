@@ -36,6 +36,19 @@ def _resolve_cart(cart_identifier):
     return cart
 
 
+def _resolve_customer_cart(customer_identifier):
+    if customer_identifier in (None, ""):
+        return None
+
+    try:
+        customer_id = int(customer_identifier)
+    except (TypeError, ValueError):
+        return None
+
+    cart, _ = Cart.objects.get_or_create(customer_id=customer_id)
+    return cart
+
+
 class CartCreate(APIView):
     def post(self, request):
         customer_id = request.data.get("customer_id")
@@ -54,10 +67,35 @@ class AddCartItem(APIView):
     def post(self, request):
         book_id = request.data.get("book_id")
         quantity = request.data.get("quantity", 1)
-        cart = _resolve_cart(request.data.get("cart") or request.data.get("customer_id"))
+        customer_id = request.data.get("customer_id")
+        cart_identifier = request.data.get("cart")
+
+        if customer_id in (None, ""):
+            return Response(
+                {"error": "customer_id is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        cart = _resolve_customer_cart(customer_id)
+        if cart is None:
+            return Response({"error": "customer_id must be an integer"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if cart_identifier not in (None, ""):
+            requested_cart = _resolve_cart(cart_identifier)
+            if requested_cart is None:
+                return Response({"error": "cart must be an integer"}, status=status.HTTP_400_BAD_REQUEST)
+            if requested_cart.customer_id != cart.customer_id:
+                return Response(
+                    {"error": "You cannot modify another user's cart"},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            cart = requested_cart
 
         if cart is None:
-            return Response({"error": "cart is required"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "customer_id is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         try:
             quantity = int(quantity)
