@@ -143,6 +143,32 @@ class GatewayDashboardRoutingTests(TestCase):
         self.assertNotContains(response, "Orders To Process")
         self.assertNotContains(response, "Recommended For You")
 
+    def test_admin_dashboard_users_section_renders_distinct_state(self):
+        self._set_user_session({"id": 1, "username": "admin", "role": "admin"})
+
+        response = self.client.get("/admin/dashboard/?section=users", secure=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "dashboard_admin.html")
+        self.assertContains(response, "Manage Users")
+        self.assertContains(response, "User management workspace")
+        self.assertContains(response, "Review new registrations")
+        self.assertNotContains(response, "Catalog management workspace")
+        self.assertNotContains(response, "Update featured titles")
+
+    def test_admin_dashboard_products_section_renders_distinct_state(self):
+        self._set_user_session({"id": 1, "username": "admin", "role": "admin"})
+
+        response = self.client.get("/admin/dashboard/?section=products", secure=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "dashboard_admin.html")
+        self.assertContains(response, "Manage Products")
+        self.assertContains(response, "Catalog management workspace")
+        self.assertContains(response, "Update featured titles")
+        self.assertNotContains(response, "User management workspace")
+        self.assertNotContains(response, "Review new registrations")
+
     def test_staff_dashboard_renders_operational_cards(self):
         self._set_user_session({"id": 2, "username": "staff", "role": "staff"})
 

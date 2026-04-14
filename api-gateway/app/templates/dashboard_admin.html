@@ -8,6 +8,75 @@
     <p>{{ page_description }}</p>
 </div>
 
+{% if admin_section == "users" %}
+<section class="grid">
+    <article class="glass-card">
+        <div class="card-header">
+            <div>
+                <h2 class="card-title">User management workspace</h2>
+                <p class="card-subtitle">Review new registrations, role changes, and support-sensitive account issues.</p>
+            </div>
+            <span class="price-tag">Users</span>
+        </div>
+        <div class="card-body">
+            <p>Review new registrations and access-sensitive accounts so operational issues can be triaged early.</p>
+        </div>
+        <a class="action-btn" href="/profile/">
+            <i class="fa-solid fa-circle-user"></i> Review new registrations
+        </a>
+    </article>
+
+    <article class="glass-card">
+        <div class="card-header">
+            <div>
+                <h2 class="card-title">Access policy checks</h2>
+                <p class="card-subtitle">Confirm elevated permissions, suspended users, and pending escalations.</p>
+            </div>
+            <span class="price-tag">Audit</span>
+        </div>
+        <div class="card-body">
+            <p>Use this state to audit account changes before they affect staff workflows or customer sessions.</p>
+        </div>
+        <a class="action-btn" href="/admin/dashboard/?section=products">
+            <i class="fa-solid fa-boxes-stacked"></i> Manage Products
+        </a>
+    </article>
+</section>
+{% elif admin_section == "products" %}
+<section class="grid">
+    <article class="glass-card">
+        <div class="card-header">
+            <div>
+                <h2 class="card-title">Catalog management workspace</h2>
+                <p class="card-subtitle">Inspect assortment gaps, merchandising blockers, and inventory-facing content issues.</p>
+            </div>
+            <span class="price-tag">Catalog</span>
+        </div>
+        <div class="card-body">
+            <p>Update featured titles and pricing priorities before storefront changes drift from operational reality.</p>
+        </div>
+        <a class="action-btn" href="/books/create/">
+            <i class="fa-solid fa-pen-to-square"></i> Update featured titles
+        </a>
+    </article>
+
+    <article class="glass-card">
+        <div class="card-header">
+            <div>
+                <h2 class="card-title">Publishing checks</h2>
+                <p class="card-subtitle">Review metadata quality, stock readiness, and launch timing across the catalog.</p>
+            </div>
+            <span class="price-tag">Ready</span>
+        </div>
+        <div class="card-body">
+            <p>Use this state to coordinate product readiness before releases go live to customers and staff.</p>
+        </div>
+        <a class="action-btn" href="/admin/dashboard/?section=users">
+            <i class="fa-solid fa-users-gear"></i> Manage Users
+        </a>
+    </article>
+</section>
+{% else %}
 <section class="grid">
     <article class="glass-card">
         <div class="card-header">
@@ -41,4 +110,5 @@
         </a>
     </article>
 </section>
+{% endif %}
 {% endblock %}

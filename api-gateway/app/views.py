@@ -142,11 +142,23 @@ def role_dashboard_view(request, role):
     target = _dashboard_path_for_role(user.get("role"))
     if request.path != target:
         return redirect(target)
+    admin_sections = {
+        "overview": {
+            "page_title": "Admin dashboard",
+            "page_description": "Track platform health, user activity, and catalog readiness from one place.",
+        },
+        "users": {
+            "page_title": "Manage Users",
+            "page_description": "Review user activity, access requests, and account health before issues escalate.",
+        },
+        "products": {
+            "page_title": "Manage Products",
+            "page_description": "Keep the catalog aligned with merchandising priorities, stock updates, and content quality.",
+        },
+    }
     dashboards = {
         "admin": {
             "template_name": "dashboard_admin.html",
-            "page_title": "Admin dashboard",
-            "page_description": "Track platform health, user activity, and catalog readiness from one place.",
         },
         "staff": {
             "template_name": "dashboard_staff.html",
@@ -163,14 +175,23 @@ def role_dashboard_view(request, role):
     if not dashboard:
         return redirect("/login/")
 
+    context = {
+        "user": user,
+        "page_title": dashboard.get("page_title"),
+        "page_description": dashboard.get("page_description"),
+    }
+    if role == "admin":
+        section = request.GET.get("section")
+        if section not in {"users", "products"}:
+            section = "overview"
+        context["admin_section"] = section
+        context["page_title"] = admin_sections[section]["page_title"]
+        context["page_description"] = admin_sections[section]["page_description"]
+
     return render(
         request,
         dashboard["template_name"],
-        {
-            "user": user,
-            "page_title": dashboard["page_title"],
-            "page_description": dashboard["page_description"],
-        },
+        context,
     )
 
 
