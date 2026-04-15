@@ -91,48 +91,67 @@ class AdvisorService:
 
         return summary
 
+    def _chat_fallback_payload(self, question=""):
+        behavior_segment = "casual_buyer"
+        recommended_books = []
+        return {
+            "answer": build_fallback_answer(question, behavior_segment, recommended_books),
+            "behavior_segment": behavior_segment,
+            "probabilities": {},
+            "recommended_books": recommended_books,
+            "sources": [],
+            "graph_facts": [],
+            "graph_paths": [],
+            "feature_summary": "Chat unavailable; using fallback behavior segment.",
+        }
+
     def _profile_fallback_payload(self):
         return {
             "behavior_segment": "casual_buyer",
+            "probabilities": {},
+            "recommended_books": [],
             "feature_summary": "Profile unavailable; using fallback behavior segment.",
         }
 
     def chat(self, user_id=None, question=""):
-        books, profile, orders, reviews, cart_items = self._collect_behavior_inputs(user_id)
-
-        features, prediction = self._predict_behavior(profile, books, orders, reviews, cart_items)
-        behavior_segment = prediction["behavior_segment"]
-        recommended_books = self._pick_books(books, behavior_segment)
-        retrieval = self.rag_pipeline.retrieve(question, behavior_segment=behavior_segment, top_k=3)
-        sources = retrieval["text_sources"]
-        feature_summary = self._build_feature_summary(features, prediction)
-        prompt = build_chat_prompt(
-            question,
-            behavior_segment,
-            feature_summary,
-            recommended_books=recommended_books,
-            retrieval_context=retrieval,
-        )
-
         try:
-            answer = self._call_llm(prompt) or build_fallback_answer(
+            books, profile, orders, reviews, cart_items = self._collect_behavior_inputs(user_id)
+
+            features, prediction = self._predict_behavior(profile, books, orders, reviews, cart_items)
+            behavior_segment = prediction["behavior_segment"]
+            recommended_books = self._pick_books(books, behavior_segment)
+            retrieval = self.rag_pipeline.retrieve(question, behavior_segment=behavior_segment, top_k=3)
+            sources = retrieval["text_sources"]
+            feature_summary = self._build_feature_summary(features, prediction)
+            prompt = build_chat_prompt(
                 question,
                 behavior_segment,
-                recommended_books,
+                feature_summary,
+                recommended_books=recommended_books,
+                retrieval_context=retrieval,
             )
-        except Exception:
-            answer = build_fallback_answer(question, behavior_segment, recommended_books)
 
-        return {
-            "answer": answer,
-            "behavior_segment": behavior_segment,
-            "probabilities": prediction.get("probabilities", {}),
-            "recommended_books": recommended_books,
-            "sources": sources,
-            "graph_facts": retrieval["graph_facts"],
-            "graph_paths": retrieval["graph_paths"],
-            "feature_summary": feature_summary,
-        }
+            try:
+                answer = self._call_llm(prompt) or build_fallback_answer(
+                    question,
+                    behavior_segment,
+                    recommended_books,
+                )
+            except Exception:
+                answer = build_fallback_answer(question, behavior_segment, recommended_books)
+
+            return {
+                "answer": answer,
+                "behavior_segment": behavior_segment,
+                "probabilities": prediction.get("probabilities", {}),
+                "recommended_books": recommended_books,
+                "sources": sources,
+                "graph_facts": retrieval["graph_facts"],
+                "graph_paths": retrieval["graph_paths"],
+                "feature_summary": feature_summary,
+            }
+        except Exception:
+            return self._chat_fallback_payload(question)
 
     def profile(self, user_id):
         try:

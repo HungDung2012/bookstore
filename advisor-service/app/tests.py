@@ -172,6 +172,18 @@ class AdvisorServiceOrchestrationTests(TestCase):
         self.assertTrue(any(fact["statement"] for fact in result["graph_facts"]))
         self.assertTrue(any(source["text"] for source in result["sources"]))
 
+    def test_chat_returns_safe_fallback_when_orchestration_fails(self):
+        with patch.object(self.service.rag_pipeline, "retrieve", side_effect=RuntimeError("rag failed")):
+            result = self.service.chat(user_id=1, question="What books should I buy?")
+
+        self.assertEqual(result["behavior_segment"], "casual_buyer")
+        self.assertEqual(result["probabilities"], {})
+        self.assertEqual(result["recommended_books"], [])
+        self.assertEqual(result["sources"], [])
+        self.assertEqual(result["graph_facts"], [])
+        self.assertEqual(result["graph_paths"], [])
+        self.assertIn("our featured catalog", result["answer"])
+
     def test_profile_returns_enriched_summary_and_probabilities(self):
         result = self.service.profile(user_id=1)
 
@@ -181,6 +193,20 @@ class AdvisorServiceOrchestrationTests(TestCase):
         self.assertIn("feature_summary", result)
         self.assertIn("Top probabilities:", result["feature_summary"])
         self.assertTrue(result["recommended_books"])
+
+    def test_profile_fallback_payload_preserves_success_shape(self):
+        with patch.object(self.service, "_collect_behavior_inputs", side_effect=RuntimeError("upstream failed")):
+            result = self.service.profile(user_id=1)
+
+        self.assertEqual(
+            result,
+            {
+                "behavior_segment": "casual_buyer",
+                "probabilities": {},
+                "recommended_books": [],
+                "feature_summary": "Profile unavailable; using fallback behavior segment.",
+            },
+        )
 
 
 class BehaviorDatasetSchemaTests(TestCase):
