@@ -52,8 +52,11 @@ class AdvisorBaselineTests(TestCase):
         chat_mock.return_value = {
             "answer": "Try technical books.",
             "behavior_segment": "tech_reader",
-            "recommended_books": [],
-            "sources": [],
+            "probabilities": {"tech_reader": 0.81, "casual_buyer": 0.11},
+            "recommended_books": [{"id": 1, "title": "Clean Code"}],
+            "sources": [{"id": "faq_shipping_policy", "title": "Shipping policy"}],
+            "graph_facts": [{"id": "fact_shipping", "statement": "Shipping updates matter."}],
+            "graph_paths": [{"nodes": ["segment:tech_reader", "service:shipping"]}],
         }
 
         response = self.client.post(
@@ -64,6 +67,8 @@ class AdvisorBaselineTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["behavior_segment"], "tech_reader")
+        self.assertIn("graph_facts", response.json())
+        self.assertIn("graph_paths", response.json())
         chat_mock.assert_called_once_with(user_id=1, question="Recommend books")
 
     @patch("app.services.advisor.AdvisorService.chat")
@@ -71,8 +76,11 @@ class AdvisorBaselineTests(TestCase):
         chat_mock.return_value = {
             "answer": "Try our featured catalog.",
             "behavior_segment": "casual_buyer",
+            "probabilities": {},
             "recommended_books": [],
             "sources": [],
+            "graph_facts": [],
+            "graph_paths": [],
             "feature_summary": "Predicted segment is casual_buyer from orders=0, reviews=0.",
         }
 
@@ -99,6 +107,11 @@ class AdvisorBaselineTests(TestCase):
     def test_profile_endpoint_returns_behavior_segment(self, profile_mock):
         profile_mock.return_value = {
             "behavior_segment": "literature_reader",
+            "probabilities": {"literature_reader": 0.74, "casual_buyer": 0.18},
+            "recommended_books": [{"id": 2, "title": "Novel Study"}],
+            "sources": [{"id": "segment_literature_reader", "title": "Advice for literature readers"}],
+            "graph_facts": [{"id": "fact_literature", "statement": "Literature readers enjoy novels."}],
+            "graph_paths": [{"nodes": ["segment:literature_reader", "category:literature"]}],
             "feature_summary": "Frequent purchases in literature.",
         }
 
@@ -106,6 +119,34 @@ class AdvisorBaselineTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["behavior_segment"], "literature_reader")
+        self.assertIn("probabilities", response.json())
+        self.assertIn("recommended_books", response.json())
+        self.assertIn("graph_facts", response.json())
+        self.assertIn("graph_paths", response.json())
+        profile_mock.assert_called_once_with(user_id=4)
+
+    @patch("app.services.advisor.AdvisorService.profile")
+    def test_profile_endpoint_returns_richer_contract(self, profile_mock):
+        profile_mock.return_value = {
+            "behavior_segment": "tech_reader",
+            "probabilities": {"tech_reader": 0.92},
+            "recommended_books": [{"id": 1, "title": "Clean Code"}],
+            "sources": [{"id": "segment_tech_reader", "title": "Advice for technology readers"}],
+            "graph_facts": [{"id": "fact_tech", "statement": "Tech readers prefer programming books."}],
+            "graph_paths": [{"nodes": ["segment:tech_reader", "category:programming"]}],
+            "feature_summary": "Top probabilities: tech_reader=0.92.",
+        }
+
+        response = self.client.get("/advisor/profile/4/")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["behavior_segment"], "tech_reader")
+        self.assertEqual(payload["probabilities"], {"tech_reader": 0.92})
+        self.assertTrue(payload["recommended_books"])
+        self.assertTrue(payload["sources"])
+        self.assertTrue(payload["graph_facts"])
+        self.assertTrue(payload["graph_paths"])
         profile_mock.assert_called_once_with(user_id=4)
 
 

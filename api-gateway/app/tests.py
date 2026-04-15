@@ -418,8 +418,11 @@ class GatewayAdvisorTests(TestCase):
         gateway_response.json.return_value = {
             "answer": "Read more programming books.",
             "behavior_segment": "tech_reader",
-            "recommended_books": [],
-            "sources": [],
+            "probabilities": {"tech_reader": 0.88, "casual_buyer": 0.07},
+            "recommended_books": [{"id": 1, "title": "Clean Code"}],
+            "sources": [{"id": "segment_tech_reader", "title": "Advice for technology readers"}],
+            "graph_facts": [{"id": "fact_tech", "statement": "Tech readers prefer programming books."}],
+            "graph_paths": [{"nodes": ["segment:tech_reader", "category:programming"]}],
         }
         post_mock.return_value = gateway_response
 
@@ -430,7 +433,13 @@ class GatewayAdvisorTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["behavior_segment"], "tech_reader")
+        payload = response.json()
+        self.assertEqual(payload["behavior_segment"], "tech_reader")
+        self.assertIn("probabilities", payload)
+        self.assertIn("recommended_books", payload)
+        self.assertIn("sources", payload)
+        self.assertIn("graph_facts", payload)
+        self.assertIn("graph_paths", payload)
         post_mock.assert_called_once()
         self.assertEqual(
             post_mock.call_args.kwargs["json"],
@@ -444,8 +453,11 @@ class GatewayAdvisorTests(TestCase):
         gateway_response.json.return_value = {
             "answer": "Read more programming books.",
             "behavior_segment": "tech_reader",
+            "probabilities": {"tech_reader": 0.88},
             "recommended_books": [],
             "sources": [],
+            "graph_facts": [],
+            "graph_paths": [],
         }
         post_mock.return_value = gateway_response
 
@@ -499,6 +511,11 @@ class GatewayAdvisorTests(TestCase):
         gateway_response.json.return_value = {
             "user_id": 11,
             "behavior_segment": "tech_reader",
+            "probabilities": {"tech_reader": 0.91},
+            "recommended_books": [{"id": 1, "title": "Clean Code"}],
+            "sources": [{"id": "segment_tech_reader", "title": "Advice for technology readers"}],
+            "graph_facts": [{"id": "fact_tech", "statement": "Tech readers prefer programming books."}],
+            "graph_paths": [{"nodes": ["segment:tech_reader", "category:programming"]}],
             "preferences": [],
         }
         get_mock.return_value = gateway_response
@@ -506,12 +523,42 @@ class GatewayAdvisorTests(TestCase):
         response = self.client.get("/advisor/profile/", secure=True)
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["user_id"], 11)
+        payload = response.json()
+        self.assertEqual(payload["user_id"], 11)
+        self.assertIn("probabilities", payload)
+        self.assertIn("recommended_books", payload)
+        self.assertIn("sources", payload)
+        self.assertIn("graph_facts", payload)
+        self.assertIn("graph_paths", payload)
         get_mock.assert_called_once()
         self.assertEqual(
             get_mock.call_args.args[0],
             "http://advisor-service:8000/advisor/profile/11/",
         )
+
+    @patch("app.views.requests.post")
+    def test_advisor_chat_normalizes_missing_richer_fields(self, post_mock):
+        gateway_response = Mock(status_code=200)
+        gateway_response.json.return_value = {
+            "answer": "Try technical books.",
+            "behavior_segment": "tech_reader",
+        }
+        post_mock.return_value = gateway_response
+
+        response = self.client.post(
+            "/advisor/chat/",
+            '{"question": "Recommend books"}',
+            content_type="application/json",
+            secure=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["probabilities"], {})
+        self.assertEqual(payload["recommended_books"], [])
+        self.assertEqual(payload["sources"], [])
+        self.assertEqual(payload["graph_facts"], [])
+        self.assertEqual(payload["graph_paths"], [])
 
     @patch("app.views.requests.get")
     def test_advisor_profile_requires_auth(self, get_mock):

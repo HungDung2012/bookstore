@@ -1215,6 +1215,20 @@ def _json_from_upstream(response, service_name):
     return payload, response.status_code
 
 
+def _normalize_advisor_payload(payload):
+    if not isinstance(payload, dict):
+        return payload
+
+    normalized = dict(payload)
+    normalized["behavior_segment"] = payload.get("behavior_segment")
+    normalized["probabilities"] = payload.get("probabilities") or {}
+    normalized["recommended_books"] = payload.get("recommended_books") or []
+    normalized["sources"] = payload.get("sources") or []
+    normalized["graph_facts"] = payload.get("graph_facts") or []
+    normalized["graph_paths"] = payload.get("graph_paths") or []
+    return normalized
+
+
 @csrf_exempt
 def advisor_chat(request):
     if request.method != "POST":
@@ -1233,6 +1247,7 @@ def advisor_chat(request):
     try:
         response = requests.post(f"{ADVISOR_SERVICE_URL}/advisor/chat/", json=payload, timeout=15)
         payload, status = _json_from_upstream(response, "Advisor service")
+        payload = _normalize_advisor_payload(payload)
         return JsonResponse(payload, status=status, safe=isinstance(payload, dict))
     except requests.exceptions.RequestException as exc:
         return JsonResponse({"error": f"Advisor service unavailable: {exc}"}, status=503)
@@ -1246,6 +1261,7 @@ def advisor_profile(request):
     try:
         response = requests.get(f"{ADVISOR_SERVICE_URL}/advisor/profile/{user['id']}/", timeout=10)
         payload, status = _json_from_upstream(response, "Advisor service")
+        payload = _normalize_advisor_payload(payload)
         return JsonResponse(payload, status=status, safe=isinstance(payload, dict))
     except requests.exceptions.RequestException as exc:
         return JsonResponse({"error": f"Advisor service unavailable: {exc}"}, status=503)
