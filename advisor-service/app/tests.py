@@ -603,6 +603,16 @@ class TextRetrieverTests(TestCase):
     def setUp(self):
         self.retriever = TextRetriever(KnowledgeBaseService("app/data/knowledge_base"))
 
+    def _make_text_retriever(self, documents):
+        class FakeKBService:
+            def __init__(self, documents):
+                self._documents = documents
+
+            def load_documents(self):
+                return list(self._documents)
+
+        return TextRetriever(FakeKBService(documents))
+
     def test_text_retriever_prefers_segment_advice_for_tech_reader_questions(self):
         docs = self.retriever.search(
             "What books should a tech reader buy?",
@@ -624,3 +634,47 @@ class TextRetrieverTests(TestCase):
         self.assertGreaterEqual(len(docs), 1)
         self.assertEqual(docs[0]["id"], "faq_shipping_policy")
         self.assertEqual(docs[0]["doc_type"], "faq")
+
+    def test_text_retriever_uses_metadata_fallback_without_query_overlap(self):
+        retriever = self._make_text_retriever(
+            [
+                {
+                    "id": "segment_tech_reader",
+                    "title": "Advice for technology readers",
+                    "doc_type": "segment_advice",
+                    "target_segment": "tech_reader",
+                    "text": "Technology-oriented customers usually prefer programming, software engineering, data, and innovation books.",
+                },
+                {
+                    "id": "faq_general_help",
+                    "title": "General help",
+                    "doc_type": "faq",
+                    "target_segment": "all",
+                    "text": "General support information for all customers.",
+                },
+            ]
+        )
+
+        docs = retriever.search("Need a gift for my engineering friend", behavior_segment="tech_reader", top_k=2)
+
+        self.assertEqual(docs[0]["id"], "segment_tech_reader")
+        self.assertGreater(docs[0]["score"], 0)
+        self.assertTrue(any("segment" in reason for reason in docs[0]["reasons"]))
+
+    def test_text_retriever_matches_tokenized_segment_labels(self):
+        retriever = self._make_text_retriever(
+            [
+                {
+                    "id": "segment_tech_reader",
+                    "title": "Advice for technology readers",
+                    "doc_type": "segment_advice",
+                    "target_segment": "tech_reader",
+                    "text": "Technology-oriented customers usually prefer programming, software engineering, data, and innovation books.",
+                }
+            ]
+        )
+
+        docs = retriever.search("What books fit a modern buyer?", behavior_segment="tech reader", top_k=1)
+
+        self.assertEqual(docs[0]["id"], "segment_tech_reader")
+        self.assertGreater(docs[0]["score"], 0)

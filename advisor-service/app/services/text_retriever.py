@@ -55,48 +55,68 @@ class TextRetriever:
         ]
         return set().union(*(self._tokenize(field) for field in metadata))
 
+    def _segment_terms(self, value):
+        if not value:
+            return set()
+
+        normalized = str(value).replace("_", " ").replace("-", " ")
+        return self._tokenize(normalized)
+
     def _score(self, query, document, behavior_segment=None):
         query_terms = self._tokenize(query)
         document_terms = self._document_terms(document)
 
-        overlap = len(query_terms & document_terms)
-        if not overlap:
-            return 0.0
+        overlap = sorted(query_terms & document_terms)
+        score = float(len(overlap))
+        reasons = []
 
-        score = float(overlap)
+        if overlap:
+            reasons.append(f"query overlap: {', '.join(overlap)}")
 
         doc_type = document.get("doc_type")
-        score += self.DOC_TYPE_WEIGHTS.get(doc_type, 0.0)
+        doc_type_bonus = self.DOC_TYPE_WEIGHTS.get(doc_type, 0.0)
+        if doc_type_bonus:
+            score += doc_type_bonus
+            reasons.append(f"doc type bonus: {doc_type}")
 
         target_segment = document.get("target_segment")
-        if behavior_segment and target_segment == behavior_segment:
-            score += 2.0
-        elif target_segment == "all":
+        if target_segment == "all":
             score += 0.5
+            reasons.append("broad audience bonus: all")
+        elif behavior_segment and target_segment:
+            behavior_terms = self._segment_terms(behavior_segment)
+            target_terms = self._segment_terms(target_segment)
+            segment_overlap = sorted(behavior_terms & target_terms)
+            if segment_overlap:
+                if str(target_segment).strip().lower() == str(behavior_segment).strip().lower():
+                    segment_bonus = 2.0
+                    reasons.append(f"segment match: {behavior_segment}")
+                else:
+                    segment_bonus = 1.0 + 0.25 * len(segment_overlap)
+                    reasons.append(f"segment token overlap: {', '.join(segment_overlap)}")
+                score += segment_bonus
 
-        if behavior_segment:
-            score += 0.25 * len({behavior_segment} & self._tokenize(target_segment))
-
-        return score
+        return score, reasons
 
     def search(self, question, behavior_segment=None, top_k=3):
         if not question:
             return []
 
-        ranked_documents = sorted(
-            enumerate(self.documents),
-            key=lambda item: (
-                self._score(question, item[1], behavior_segment=behavior_segment),
-                -item[0],
-            ),
-            reverse=True,
-        )
+        scored_documents = []
+        for index, document in enumerate(self.documents):
+            score, reasons = self._score(question, document, behavior_segment=behavior_segment)
+            if score <= 0:
+                continue
+            scored_documents.append((score, index, document, reasons))
+
+        ranked_documents = sorted(scored_documents, key=lambda item: (-item[0], item[1]))
 
         results = []
-        for _, document in ranked_documents:
-            if self._score(question, document, behavior_segment=behavior_segment) <= 0:
-                continue
-            results.append(document)
+        for score, _, document, reasons in ranked_documents:
+            result = dict(document)
+            result["score"] = round(score, 3)
+            result["reasons"] = list(reasons)
+            results.append(result)
             if len(results) >= top_k:
                 break
 
