@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Iterable
 
+EXCLUDED_COLUMNS = {"label", "user_id"}
+
 
 def _coerce_float(value, default=0.0):
     try:
@@ -24,7 +26,7 @@ class BehaviorDatasetSchema:
                 key
                 for row in rows
                 for key in row.keys()
-                if key != "label"
+                if key not in EXCLUDED_COLUMNS
             }
         )
         labels = sorted(
@@ -36,9 +38,22 @@ class BehaviorDatasetSchema:
         )
         return cls(feature_names=feature_names, labels=labels)
 
+    @property
+    def export_fieldnames(self):
+        return [*self.feature_names, "label"]
+
     def vectorize_features(self, features):
         feature_map = features if isinstance(features, dict) else {}
         return [_coerce_float(feature_map.get(name, 0.0)) for name in self.feature_names]
+
+    def build_record(self, features, label):
+        feature_map = features if isinstance(features, dict) else {}
+        record = {
+            name: _coerce_float(feature_map.get(name, 0.0))
+            for name in self.feature_names
+        }
+        record["label"] = str(label).strip()
+        return record
 
     def encode_label(self, label):
         label_value = str(label).strip()

@@ -1,5 +1,6 @@
 import json
 import importlib
+import csv
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -105,8 +106,18 @@ class AdvisorBaselineTests(TestCase):
 class BehaviorDatasetSchemaTests(TestCase):
     def test_schema_handles_single_pass_iterables(self):
         def row_stream():
-            yield {"order_count": 1, "category_3_count": 2, "label": " tech_reader "}
-            yield {"order_count": 2, "publisher_9_count": 1, "label": "casual_buyer"}
+            yield {
+                "user_id": 1,
+                "order_count": 1,
+                "category_3_count": 2,
+                "label": " tech_reader ",
+            }
+            yield {
+                "user_id": 2,
+                "order_count": 2,
+                "publisher_9_count": 1,
+                "label": "casual_buyer",
+            }
 
         schema = BehaviorDatasetSchema.from_rows(row_stream())
 
@@ -119,7 +130,7 @@ class BehaviorDatasetSchemaTests(TestCase):
     def test_schema_normalizes_labels_with_whitespace(self):
         schema = BehaviorDatasetSchema.from_rows(
             [
-                {"order_count": 1, "label": " tech_reader "},
+                {"user_id": 1, "order_count": 1, "label": " tech_reader "},
                 {"order_count": 2, "label": "casual_buyer"},
             ]
         )
@@ -127,11 +138,11 @@ class BehaviorDatasetSchemaTests(TestCase):
         self.assertEqual(schema.labels, ["casual_buyer", "tech_reader"])
         self.assertEqual(schema.encode_label(" tech_reader "), 1)
 
-    def test_schema_orders_features_and_labels_deterministically(self):
+    def test_schema_exports_stable_columns_without_user_id(self):
         schema = BehaviorDatasetSchema.from_rows(
             [
-                {"order_count": 1, "category_3_count": 2, "label": "tech_reader"},
-                {"order_count": 2, "publisher_9_count": 1, "label": "casual_buyer"},
+                {"user_id": 9, "order_count": 1, "category_3_count": 2, "label": "tech_reader"},
+                {"user_id": 11, "order_count": 2, "publisher_9_count": 1, "label": "casual_buyer"},
             ]
         )
 
@@ -139,12 +150,62 @@ class BehaviorDatasetSchemaTests(TestCase):
             schema.feature_names,
             ["category_3_count", "order_count", "publisher_9_count"],
         )
+        self.assertEqual(schema.export_fieldnames, ["category_3_count", "order_count", "publisher_9_count", "label"])
         self.assertEqual(schema.labels, ["casual_buyer", "tech_reader"])
         self.assertEqual(
-            schema.vectorize_features({"order_count": 4, "category_3_count": 7}),
+            schema.vectorize_features({"user_id": 42, "order_count": 4, "category_3_count": 7}),
             [7.0, 4.0, 0.0],
         )
         self.assertEqual(schema.encode_label("tech_reader"), 1)
+        self.assertEqual(
+            schema.build_record({"user_id": 42, "order_count": 4, "category_3_count": 7}, " tech_reader "),
+            {"category_3_count": 7.0, "order_count": 4.0, "publisher_9_count": 0.0, "label": "tech_reader"},
+        )
+
+
+class PrepareBehaviorDataTests(TestCase):
+    def test_prepare_behavior_data_writes_schema_aligned_rows_with_labels(self):
+        from app.management.commands import prepare_behavior_data as prepare_behavior_data_module
+
+        class FakeClient:
+            def get_books(self):
+                return [{"id": 1, "category": 3, "publisher": 9}]
+
+            def get_user(self, user_id):
+                return {"id": user_id}
+
+            def get_orders(self, user_id):
+                return [
+                    {
+                        "total_amount": 20,
+                        "items": [{"book_id": 1, "quantity": 2}],
+                    }
+                ]
+
+            def get_reviews(self, user_id):
+                return [{"rating": 5}]
+
+            def get_cart(self, user_id):
+                return [{"book_id": 1}]
+
+        with TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "behavior_dataset.csv"
+            with patch.object(prepare_behavior_data_module, "OUTPUT_PATH", output_path), patch.object(
+                prepare_behavior_data_module, "UpstreamClient", return_value=FakeClient()
+            ):
+                prepare_behavior_data_module.Command().handle()
+
+            with output_path.open("r", encoding="utf-8", newline="") as csvfile:
+                reader = csv.DictReader(csvfile)
+                rows = list(reader)
+                fieldnames = reader.fieldnames
+
+        self.assertIsNotNone(fieldnames)
+        self.assertNotIn("user_id", fieldnames)
+        self.assertEqual(fieldnames, BehaviorDatasetSchema.from_rows(rows).export_fieldnames)
+        self.assertEqual(len(rows), 20)
+        self.assertTrue(all(row["label"] == "tech_reader" for row in rows))
+        self.assertEqual(rows[0]["category_3_count"], "2.0")
 
 
 class BehaviorModelDefinitionTests(TestCase):

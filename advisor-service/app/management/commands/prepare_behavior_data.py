@@ -3,6 +3,7 @@ from pathlib import Path
 
 from django.core.management.base import BaseCommand
 
+from app.services.behavior_dataset import BehaviorDatasetSchema
 from app.services.clients import UpstreamClient
 from app.services.features import build_behavior_features, infer_behavior_label
 
@@ -34,17 +35,17 @@ class Command(BaseCommand):
                 continue
 
             features = build_behavior_features(profile, books, orders, reviews, cart_items)
-            features["label"] = infer_behavior_label(features)
-            rows.append(features)
+            rows.append({**features, "label": infer_behavior_label(features)})
 
         if not rows:
             self.stdout.write(self.style.WARNING("No rows generated"))
             return
 
-        fieldnames = sorted({key for row in rows for key in row.keys()})
+        schema = BehaviorDatasetSchema.from_rows(rows)
         with OUTPUT_PATH.open("w", newline="", encoding="utf-8") as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer = csv.DictWriter(csvfile, fieldnames=schema.export_fieldnames)
             writer.writeheader()
-            writer.writerows(rows)
+            for row in rows:
+                writer.writerow(schema.build_record(row, row["label"]))
 
         self.stdout.write(self.style.SUCCESS(f"Wrote {len(rows)} rows to {OUTPUT_PATH}"))
