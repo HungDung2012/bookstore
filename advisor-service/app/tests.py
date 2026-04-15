@@ -1,10 +1,14 @@
+import json
 import importlib
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from django.test import TestCase
 from rest_framework.test import APIClient
 
 from app.services.behavior_dataset import BehaviorDatasetSchema
+from app.services.behavior_model import BehaviorModelService
 
 
 class AdvisorBaselineTests(TestCase):
@@ -140,3 +144,88 @@ class BehaviorDatasetSchemaTests(TestCase):
             [7.0, 4.0, 0.0],
         )
         self.assertEqual(schema.encode_label("tech_reader"), 1)
+
+
+class BehaviorModelDefinitionTests(TestCase):
+    def test_build_behavior_model_returns_compiled_model(self):
+        from app.services import behavior_model as behavior_model_module
+
+        class FakeInput:
+            def __init__(self, shape):
+                self.shape = shape
+
+        class FakeDense:
+            def __init__(self, units, activation=None):
+                self.units = units
+                self.activation = activation
+
+        class FakeDropout:
+            def __init__(self, rate):
+                self.rate = rate
+
+        class FakeSequential:
+            def __init__(self, layers):
+                self.layers = layers
+                self.input_shape = (None, layers[0].shape[0])
+                dense_layers = [layer for layer in layers if hasattr(layer, "units")]
+                self.output_shape = (None, dense_layers[-1].units)
+                self.compile_kwargs = None
+
+            def compile(self, **kwargs):
+                self.compile_kwargs = kwargs
+
+        with patch.object(behavior_model_module, "Sequential", FakeSequential), patch.object(
+            behavior_model_module, "Dense", FakeDense
+        ), patch.object(behavior_model_module, "Dropout", FakeDropout), patch.object(
+            behavior_model_module, "Input", FakeInput
+        ):
+            model = behavior_model_module.build_behavior_model(input_dim=6, output_dim=3)
+
+        self.assertEqual(model.input_shape[-1], 6)
+        self.assertEqual(model.output_shape[-1], 3)
+        self.assertEqual(model.compile_kwargs["loss"], "categorical_crossentropy")
+        self.assertEqual(model.compile_kwargs["optimizer"], "adam")
+
+
+class BehaviorModelMetadataTests(TestCase):
+    def test_predict_prefers_metadata_artifact_ordering(self):
+        from app.services import behavior_model as behavior_model_module
+
+        class FakeModel:
+            def __init__(self):
+                self.seen_vector = None
+
+            def predict(self, vector, verbose=0):
+                self.seen_vector = vector
+                return [[0.2, 0.8]]
+
+        fake_model = FakeModel()
+
+        with TemporaryDirectory() as tmpdir:
+            model_dir = Path(tmpdir)
+            (model_dir / "model_behavior.h5").write_text("stub", encoding="utf-8")
+            (model_dir / "features.txt").write_text("a\nb\n", encoding="utf-8")
+            (model_dir / "labels.txt").write_text("yes\nno\n", encoding="utf-8")
+            (model_dir / "metadata.json").write_text(
+                json.dumps(
+                    {
+                        "feature_names": ["b", "a"],
+                        "labels": ["no", "yes"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch.object(behavior_model_module, "load_model", return_value=fake_model):
+                service = BehaviorModelService(
+                    model_path=model_dir / "model_behavior.h5",
+                    features_path=model_dir / "features.txt",
+                    labels_path=model_dir / "labels.txt",
+                    metadata_path=model_dir / "metadata.json",
+                )
+                result = service.predict({"a": 1, "b": 2})
+
+        self.assertEqual(result["behavior_segment"], "yes")
+        self.assertEqual(fake_model.seen_vector.tolist(), [[2.0, 1.0]])
+        self.assertEqual(service._load_feature_names(), ["b", "a"])
+        self.assertEqual(service._load_labels(), ["no", "yes"])
