@@ -788,7 +788,7 @@ def order_list(request):
         orders = response.json() if response.status_code == 200 else []
     except requests.exceptions.RequestException:
         orders = []
-    return render(request, "orders.html", {"orders": orders, "user": user})
+    return render(request, "my_orders.html", {"orders": orders, "user": user})
 
 
 def order_detail(request, pk):

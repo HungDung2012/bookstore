@@ -61,6 +61,7 @@ urlpatterns = [
         name="delete_cart_item",
     ),
     path("checkout/", checkout, name="checkout"),
+    path("my-orders/", order_list, name="my_orders"),
     path("orders/", order_list, name="order_list"),
     path("orders/<int:pk>/", order_detail, name="order_detail"),
     path("orders/<int:pk>/cancel/", cancel_order, name="cancel_order"),

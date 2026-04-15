@@ -536,6 +536,45 @@ class GatewayShippingWorkflowTests(TestCase):
         self.assertEqual(response.status_code, 404)
         get_mock.assert_called_once_with("http://order-service:8000/orders/44/", timeout=5)
 
+    @patch("app.views.requests.get")
+    def test_customer_my_orders_page_uses_dedicated_template_and_tracking_links(self, get_mock):
+        self._set_user_session({"id": 3, "username": "alice", "role": "customer"})
+
+        orders_response = Mock(status_code=200)
+        orders_response.json.return_value = [
+            {
+                "id": 44,
+                "user_id": 3,
+                "status": "shipping",
+                "created_at": "2026-04-15T10:00:00Z",
+                "items": [{"book_id": 1, "quantity": 1, "book_title": "Dune", "unit_price": "19.99"}],
+                "total_amount": "19.99",
+            }
+        ]
+        get_mock.return_value = orders_response
+
+        response = self.client.get("/my-orders/", secure=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "my_orders.html")
+        self.assertContains(response, "Order #44")
+        self.assertContains(response, "/orders/44/")
+        self.assertContains(response, "/shipping/44/")
+        get_mock.assert_called_once_with("http://order-service:8000/orders/?user_id=3", timeout=5)
+
+    @patch("app.views.requests.get")
+    def test_orders_page_reuses_customer_my_orders_template(self, get_mock):
+        self._set_user_session({"id": 3, "username": "alice", "role": "customer"})
+
+        orders_response = Mock(status_code=200)
+        orders_response.json.return_value = []
+        get_mock.return_value = orders_response
+
+        response = self.client.get("/orders/", secure=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "my_orders.html")
+
     @patch("app.views.requests.post")
     @patch("app.views.requests.get")
     def test_staff_shipping_creation_rejects_nonexistent_order(self, get_mock, post_mock):
