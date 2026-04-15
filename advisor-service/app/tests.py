@@ -11,7 +11,7 @@ from rest_framework.test import APIClient
 from app.management.commands import train_behavior_model as train_behavior_model_module
 from app.services.behavior_dataset import BehaviorDatasetSchema
 from app.services.behavior_model import BehaviorModelService
-from app.services.graph_kb import GraphEdge, GraphKnowledgeBase, GraphNode
+from app.services.graph_kb import GraphEdge, GraphFact, GraphKnowledgeBase, GraphNode
 from app.services.graph_retriever import GraphRetriever
 
 
@@ -486,6 +486,76 @@ class GraphRetrieverTests(TestCase):
     def setUp(self):
         self.graph = GraphKnowledgeBase("app/data/knowledge_graph")
         self.retriever = GraphRetriever(self.graph)
+
+    def _make_graph(self, nodes, edges, facts):
+        class FakeGraph:
+            def __init__(self, nodes, edges, facts):
+                self.nodes = {node.id: node for node in nodes}
+                self.edges = list(edges)
+                self.facts = list(facts)
+
+            def edges_for_node(self, node_id):
+                outgoing = [edge for edge in self.edges if edge.source == node_id]
+                incoming = [edge for edge in self.edges if edge.target == node_id]
+                return {"outgoing": outgoing, "incoming": incoming}
+
+            def facts_for_node(self, node_id):
+                return [fact for fact in self.facts if fact.node_id == node_id]
+
+        return FakeGraph(nodes, edges, facts)
+
+    def test_graph_retriever_tokenization_drops_possessive_junk_tokens(self):
+        self.assertIn("children", self.retriever._tokenize("children’s books"))
+        self.assertNotIn("s", self.retriever._tokenize("children’s books"))
+
+    def test_graph_retriever_ranks_facts_by_fact_specific_overlap(self):
+        graph = self._make_graph(
+            nodes=[
+                GraphNode(
+                    id="service:shipping",
+                    type="service",
+                    label="Shipping service",
+                    metadata={},
+                )
+            ],
+            edges=[],
+            facts=[
+                GraphFact(
+                    id="fact-a-general",
+                    node_id="service:shipping",
+                    relation="summary",
+                    statement="General policy overview for customers.",
+                    metadata={"confidence": "high"},
+                ),
+                GraphFact(
+                    id="fact-z-shipping",
+                    node_id="service:shipping",
+                    relation="summary",
+                    statement="Shipping updates and tracking details help customers.",
+                    metadata={"confidence": "high"},
+                ),
+            ],
+        )
+
+        result = GraphRetriever(graph).search(
+            question="shipping updates",
+            behavior_segment=None,
+        )
+
+        self.assertEqual(result["facts"][0]["id"], "fact-z-shipping")
+
+    def test_graph_retriever_skips_policy_path_without_policy_keywords(self):
+        result = self.retriever.search(
+            question="I need children's books.",
+            behavior_segment="family_reader",
+        )
+
+        self.assertFalse(
+            any(
+                path["nodes"] == ["segment:family_reader", "category:children", "policy:cancellation"]
+                for path in result["paths"]
+            )
+        )
 
     def test_graph_retriever_returns_segment_facts_and_direct_shipping_path(self):
         result = self.retriever.search(

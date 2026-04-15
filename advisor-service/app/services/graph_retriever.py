@@ -54,11 +54,17 @@ class GraphRetriever:
         self.graph = graph
 
     def _tokenize(self, value):
-        return {
-            token
-            for token in re.findall(r"\w+", (value or "").lower())
-            if token not in self.STOPWORDS
-        }
+        normalized = (value or "").lower().replace("’", "'").replace("`", "'")
+        tokens = set()
+        for raw_token in re.findall(r"[a-z0-9]+(?:'[a-z0-9]+)?", normalized):
+            token = raw_token
+            if token.endswith("'s"):
+                token = token[:-2]
+            elif token.endswith("'"):
+                token = token[:-1]
+            if token and token not in self.STOPWORDS:
+                tokens.add(token)
+        return tokens
 
     def _node_tokens(self, node):
         metadata_text = " ".join(str(value) for value in (node.metadata or {}).values())
@@ -122,7 +128,9 @@ class GraphRetriever:
 
         return score, reasons
 
-    def _build_fact_result(self, fact, node_score, reasons):
+    def _build_fact_result(self, fact, node_score, question_tokens, reasons):
+        fact_tokens = self._tokenize(fact.statement)
+        fact_overlap = sorted(question_tokens & fact_tokens)
         confidence = str((fact.metadata or {}).get("confidence", "")).lower()
         confidence_bonus = {"high": 0.5, "medium": 0.25}.get(confidence, 0.0)
         return {
@@ -130,8 +138,8 @@ class GraphRetriever:
             "node_id": fact.node_id,
             "relation": fact.relation,
             "statement": fact.statement,
-            "score": round(node_score + confidence_bonus, 3),
-            "reasons": list(reasons),
+            "score": round(node_score + len(fact_overlap) + confidence_bonus, 3),
+            "reasons": list(reasons) + ([f"fact overlap: {', '.join(fact_overlap)}"] if fact_overlap else []),
         }
 
     def _build_direct_path(self, segment_node_id, target_node_id, node_score, reasons):
@@ -161,7 +169,7 @@ class GraphRetriever:
             target_hits = self._type_keyword_hits(target_node, question_tokens)
             if target_node.type not in {"service", "policy"}:
                 continue
-            if not target_hits and target_node.id != f"policy:cancellation":
+            if not target_hits:
                 continue
 
             paths.append(
@@ -187,12 +195,11 @@ class GraphRetriever:
 
         scored_nodes.sort(key=lambda item: (-item[0], item[1].id))
         ranked_nodes = scored_nodes[: max(top_k * 2, top_k)]
-        node_scores = {node.id: (score, reasons) for score, node, reasons in ranked_nodes}
 
         ranked_facts = []
         for score, node, reasons in ranked_nodes:
             for fact in self.graph.facts_for_node(node.id):
-                ranked_facts.append(self._build_fact_result(fact, score, reasons))
+                ranked_facts.append(self._build_fact_result(fact, score, question_tokens, reasons))
 
         ranked_facts.sort(key=lambda item: (-item["score"], item["node_id"], item["id"]))
 
