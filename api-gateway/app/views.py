@@ -226,6 +226,175 @@ def _create_staff_orders_context(user, error=None):
     }
 
 
+def _fetch_json_list(url, timeout=5):
+    try:
+        response = requests.get(url, timeout=timeout)
+    except requests.exceptions.RequestException:
+        return []
+    if response.status_code != 200:
+        return []
+    try:
+        payload = response.json()
+    except ValueError:
+        return []
+    return payload if isinstance(payload, list) else []
+
+
+def _normalize_filter_value(value):
+    return (value or "").strip().lower()
+
+
+def _user_matches_filters(user, query, role_filter, status_filter):
+    if query:
+        searchable_values = [
+            user.get("username", ""),
+            user.get("full_name", ""),
+            user.get("email", ""),
+            user.get("phone", ""),
+            user.get("address", ""),
+            user.get("role", ""),
+        ]
+        if not any(query in str(value).lower() for value in searchable_values):
+            return False
+
+    if role_filter and role_filter != "all" and user.get("role") != role_filter:
+        return False
+
+    if status_filter and status_filter != "all":
+        is_active = bool(user.get("is_active", False))
+        if status_filter == "active" and not is_active:
+            return False
+        if status_filter == "inactive" and is_active:
+            return False
+
+    return True
+
+
+def _book_matches_filters(book, query, category_filter, stock_filter):
+    if query:
+        searchable_values = [
+            book.get("title", ""),
+            book.get("author", ""),
+            book.get("category_name", ""),
+            book.get("publisher_name", ""),
+        ]
+        if not any(query in str(value).lower() for value in searchable_values):
+            return False
+
+    if category_filter and category_filter != "all":
+        category_value = str(book.get("category"))
+        category_name = _normalize_filter_value(book.get("category_name"))
+        if category_filter not in {category_value.lower(), category_name}:
+            return False
+
+    if stock_filter and stock_filter != "all":
+        stock_value = int(book.get("stock", 0) or 0)
+        if stock_filter == "low" and stock_value > 5:
+            return False
+        if stock_filter == "in_stock" and stock_value <= 5:
+            return False
+        if stock_filter == "out" and stock_value > 0:
+            return False
+
+    return True
+
+
+def _create_admin_users_context(request, user):
+    users = _fetch_json_list(f"{USER_SERVICE_URL}/users/")
+    query = _normalize_filter_value(request.GET.get("q"))
+    role_filter = _normalize_filter_value(request.GET.get("role"))
+    status_filter = _normalize_filter_value(request.GET.get("status"))
+
+    filtered_users = []
+    for item in users:
+        if not isinstance(item, dict):
+            continue
+        if not _user_matches_filters(item, query, role_filter, status_filter):
+            continue
+        filtered_users.append(
+            {
+                **item,
+                "display_name": item.get("full_name") or item.get("username") or f"User #{item.get('id')}",
+                "status_label": "Active" if item.get("is_active", False) else "Inactive",
+            }
+        )
+
+    return {
+        "user": user,
+        "page_title": "Manage Users",
+        "page_description": "Review registrations, roles, and account status from the user service.",
+        "admin_section": "users",
+        "users": filtered_users,
+        "user_summary": {
+            "total": len(users),
+            "filtered": len(filtered_users),
+            "active": sum(1 for item in users if isinstance(item, dict) and item.get("is_active")),
+            "staff": sum(1 for item in users if isinstance(item, dict) and item.get("role") == "staff"),
+            "customers": sum(1 for item in users if isinstance(item, dict) and item.get("role") == "customer"),
+        },
+        "query": request.GET.get("q", ""),
+        "role_filter": request.GET.get("role", "all"),
+        "status_filter": request.GET.get("status", "all"),
+    }
+
+
+def _create_admin_products_context(request, user):
+    books = _fetch_json_list(f"{BOOK_SERVICE_URL}/books/")
+    categories = {
+        item.get("id"): item.get("name")
+        for item in _fetch_json_list(f"{BOOK_SERVICE_URL}/categories/")
+        if isinstance(item, dict) and item.get("id") is not None
+    }
+    publishers = {
+        item.get("id"): item.get("name")
+        for item in _fetch_json_list(f"{BOOK_SERVICE_URL}/publishers/")
+        if isinstance(item, dict) and item.get("id") is not None
+    }
+
+    query = _normalize_filter_value(request.GET.get("q"))
+    category_filter = _normalize_filter_value(request.GET.get("category"))
+    stock_filter = _normalize_filter_value(request.GET.get("stock"))
+
+    filtered_books = []
+    for item in books:
+        if not isinstance(item, dict):
+            continue
+        annotated = {
+            **item,
+            "category_name": categories.get(item.get("category")) or "Uncategorized",
+            "publisher_name": publishers.get(item.get("publisher")) or "Unknown publisher",
+        }
+        annotated["stock_label"] = "Low stock" if int(annotated.get("stock", 0) or 0) <= 5 else "In stock"
+        if not _book_matches_filters(annotated, query, category_filter, stock_filter):
+            continue
+        filtered_books.append(annotated)
+
+    return {
+        "user": user,
+        "page_title": "Manage Products",
+        "page_description": "Inspect the catalog, stock levels, and publishing metadata from book service.",
+        "admin_section": "products",
+        "books": filtered_books,
+        "categories": sorted(
+            [{"id": category_id, "name": name} for category_id, name in categories.items()],
+            key=lambda item: item["name"] or "",
+        ),
+        "publishers": sorted(
+            [{"id": publisher_id, "name": name} for publisher_id, name in publishers.items()],
+            key=lambda item: item["name"] or "",
+        ),
+        "product_summary": {
+            "total": len(books),
+            "filtered": len(filtered_books),
+            "low_stock": sum(1 for item in books if isinstance(item, dict) and int(item.get("stock", 0) or 0) <= 5),
+            "out_of_stock": sum(1 for item in books if isinstance(item, dict) and int(item.get("stock", 0) or 0) <= 0),
+        },
+        "query": request.GET.get("q", ""),
+        "category_filter": request.GET.get("category", "all"),
+        "stock_filter": request.GET.get("stock", "all"),
+    }
+
+
 def _render_staff_shipping_error(request, user, error):
     return render(request, "staff_shipping.html", _create_shipping_error_context(user, error))
 
@@ -318,23 +487,11 @@ def role_dashboard_view(request, role):
     target = _dashboard_path_for_role(user.get("role"))
     if request.path != target:
         return redirect(target)
-    admin_sections = {
-        "overview": {
-            "page_title": "Admin dashboard",
-            "page_description": "Track platform health, user activity, and catalog readiness from one place.",
-        },
-        "users": {
-            "page_title": "Manage Users",
-            "page_description": "Review user activity, access requests, and account health before issues escalate.",
-        },
-        "products": {
-            "page_title": "Manage Products",
-            "page_description": "Keep the catalog aligned with merchandising priorities, stock updates, and content quality.",
-        },
-    }
     dashboards = {
         "admin": {
             "template_name": "dashboard_admin.html",
+            "page_title": "Admin dashboard",
+            "page_description": "Track platform health, user activity, and catalog readiness from one place.",
         },
         "staff": {
             "template_name": "dashboard_staff.html",
@@ -361,8 +518,10 @@ def role_dashboard_view(request, role):
         if section not in {"users", "products"}:
             section = "overview"
         context["admin_section"] = section
-        context["page_title"] = admin_sections[section]["page_title"]
-        context["page_description"] = admin_sections[section]["page_description"]
+        if section == "users":
+            return render(request, "admin_users.html", _create_admin_users_context(request, user))
+        if section == "products":
+            return render(request, "admin_products.html", _create_admin_products_context(request, user))
 
     return render(
         request,

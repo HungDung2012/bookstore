@@ -240,31 +240,131 @@ class GatewayDashboardRoutingTests(TestCase):
         self.assertNotContains(response, "Orders To Process")
         self.assertNotContains(response, "Recommended For You")
 
-    def test_admin_dashboard_users_section_renders_distinct_state(self):
+    @patch("app.views.requests.get")
+    def test_admin_dashboard_users_section_fetches_and_filters_real_users(self, get_mock):
         self._set_user_session({"id": 1, "username": "admin", "role": "admin"})
 
-        response = self.client.get("/admin/dashboard/?section=users", secure=True)
+        users_response = Mock(status_code=200)
+        users_response.json.return_value = [
+            {
+                "id": 10,
+                "username": "alice",
+                "email": "alice@example.com",
+                "full_name": "Alice Nguyen",
+                "phone": "0900000001",
+                "address": "123 Main St",
+                "role": "customer",
+                "is_active": True,
+                "created_at": "2026-04-15T08:00:00Z",
+            },
+            {
+                "id": 11,
+                "username": "staff01",
+                "email": "staff@example.com",
+                "full_name": "Staff One",
+                "phone": "0900000002",
+                "address": "456 Main St",
+                "role": "staff",
+                "is_active": True,
+                "created_at": "2026-04-15T09:00:00Z",
+            },
+            {
+                "id": 12,
+                "username": "inactive",
+                "email": "inactive@example.com",
+                "full_name": "Inactive User",
+                "phone": "0900000003",
+                "address": "789 Main St",
+                "role": "customer",
+                "is_active": False,
+                "created_at": "2026-04-15T10:00:00Z",
+            },
+        ]
+        get_mock.return_value = users_response
+
+        response = self.client.get("/admin/dashboard/?section=users&q=alice&role=customer&status=active", secure=True)
 
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, "dashboard_admin.html")
+        self.assertTemplateUsed(response, "admin_users.html")
         self.assertContains(response, "Manage Users")
-        self.assertContains(response, "User management workspace")
-        self.assertContains(response, "Review new registrations")
-        self.assertNotContains(response, "Catalog management workspace")
-        self.assertNotContains(response, "Update featured titles")
+        self.assertContains(response, "Alice Nguyen")
+        self.assertContains(response, "customer")
+        self.assertContains(response, "Active")
+        self.assertNotContains(response, "Staff One")
+        self.assertNotContains(response, "Inactive User")
+        get_mock.assert_called_once_with("http://user-service:8000/users/", timeout=5)
 
-    def test_admin_dashboard_products_section_renders_distinct_state(self):
+    @patch("app.views.requests.get")
+    def test_admin_dashboard_products_section_fetches_and_filters_real_products(self, get_mock):
         self._set_user_session({"id": 1, "username": "admin", "role": "admin"})
 
-        response = self.client.get("/admin/dashboard/?section=products", secure=True)
+        def fake_get(url, timeout=5):
+            response = Mock()
+            if url == "http://book-service:8000/books/":
+                response.status_code = 200
+                response.json.return_value = [
+                    {
+                        "id": 21,
+                        "title": "Dune",
+                        "author": "Frank Herbert",
+                        "price": "18.99",
+                        "stock": 45,
+                        "category": 2,
+                        "publisher": 4,
+                    },
+                    {
+                        "id": 22,
+                        "title": "Python Crash Course",
+                        "author": "Eric Matthes",
+                        "price": "29.99",
+                        "stock": 4,
+                        "category": 3,
+                        "publisher": 5,
+                    },
+                    {
+                        "id": 23,
+                        "title": "The Pragmatic Programmer",
+                        "author": "Andrew Hunt",
+                        "price": "31.50",
+                        "stock": 2,
+                        "category": 3,
+                        "publisher": 5,
+                    },
+                ]
+                return response
+            if url == "http://book-service:8000/categories/":
+                response.status_code = 200
+                response.json.return_value = [
+                    {"id": 2, "name": "Science Fiction"},
+                    {"id": 3, "name": "Programming"},
+                ]
+                return response
+            if url == "http://book-service:8000/publishers/":
+                response.status_code = 200
+                response.json.return_value = [
+                    {"id": 4, "name": "Del Rey"},
+                    {"id": 5, "name": "No Starch Press"},
+                ]
+                return response
+            raise AssertionError(f"Unexpected URL {url}")
+
+        get_mock.side_effect = fake_get
+
+        response = self.client.get("/admin/dashboard/?section=products&q=python&stock=low", secure=True)
 
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, "dashboard_admin.html")
+        self.assertTemplateUsed(response, "admin_products.html")
         self.assertContains(response, "Manage Products")
-        self.assertContains(response, "Catalog management workspace")
-        self.assertContains(response, "Update featured titles")
-        self.assertNotContains(response, "User management workspace")
-        self.assertNotContains(response, "Review new registrations")
+        self.assertContains(response, "Python Crash Course")
+        self.assertContains(response, "Programming")
+        self.assertContains(response, "No Starch Press")
+        self.assertContains(response, "Low stock")
+        self.assertNotContains(response, "Dune")
+        self.assertNotContains(response, "The Pragmatic Programmer")
+        self.assertEqual(
+            get_mock.call_count,
+            3,
+        )
 
     def test_staff_dashboard_renders_operational_cards(self):
         self._set_user_session({"id": 2, "username": "staff", "role": "staff"})
