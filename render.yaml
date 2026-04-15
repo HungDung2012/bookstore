@@ -59,6 +59,11 @@ services:
           type: pserv
           name: bookstore-advisor-service
           property: hostport
+      - key: SHIPPING_SERVICE_URL
+        fromService:
+          type: pserv
+          name: bookstore-shipping-service
+          property: hostport
 
   - type: pserv
     name: bookstore-user-service
@@ -336,3 +341,26 @@ services:
         sync: false
       - key: OPENAI_MODEL
         value: "gpt-4o-mini"
+
+  - type: pserv
+    name: bookstore-shipping-service
+    runtime: docker
+    plan: starter
+    region: singapore
+    dockerContext: ./shipping-service
+    dockerfilePath: ./shipping-service/Dockerfile
+    disk:
+      name: shipping-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: DEBUG
+        value: "false"
+      - key: ALLOWED_HOSTS
+        value: "*"
+      - key: DATABASE_URL
+        value: sqlite:////var/data/db.sqlite3
+      - key: SECRET_KEY
+        generateValue: true
