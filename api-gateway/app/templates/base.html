@@ -395,6 +395,219 @@
         .qty-input:focus {
             border-color: var(--primary);
         }
+
+        .advisor-chat-launcher {
+            position: fixed;
+            right: 1.5rem;
+            bottom: 1.5rem;
+            z-index: 140;
+            border: 1px solid rgba(96, 165, 250, 0.35);
+            background: linear-gradient(135deg, rgba(37, 99, 235, 0.95), rgba(139, 92, 246, 0.92));
+            color: #fff;
+            box-shadow: 0 16px 40px rgba(15, 23, 42, 0.45);
+            border-radius: 999px;
+            padding: 0.95rem 1.2rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.65rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+        }
+
+        .advisor-chat-launcher:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 20px 44px rgba(15, 23, 42, 0.55);
+            opacity: 0.96;
+        }
+
+        .advisor-chat-panel {
+            position: fixed;
+            right: 1.5rem;
+            bottom: 5.9rem;
+            width: min(380px, calc(100vw - 2rem));
+            max-height: min(72vh, 640px);
+            z-index: 145;
+            border-radius: 22px;
+            border: 1px solid var(--card-border);
+            background: rgba(15, 23, 42, 0.92);
+            backdrop-filter: blur(20px);
+            box-shadow: 0 24px 60px rgba(2, 6, 23, 0.55);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .advisor-chat-panel[hidden] {
+            display: none;
+        }
+
+        .advisor-chat-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 1rem;
+            padding: 1.1rem 1.2rem 0.9rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            background: linear-gradient(180deg, rgba(59, 130, 246, 0.16), rgba(15, 23, 42, 0));
+        }
+
+        .advisor-chat-header strong {
+            display: block;
+            font-size: 1rem;
+        }
+
+        .advisor-chat-header p {
+            margin-top: 0.2rem;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+
+        .advisor-chat-close {
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-muted);
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+        }
+
+        .advisor-chat-close:hover {
+            color: var(--text-main);
+            background: rgba(255, 255, 255, 0.1);
+            transform: scale(1.03);
+        }
+
+        .advisor-chat-suggestions {
+            display: flex;
+            gap: 0.55rem;
+            overflow-x: auto;
+            padding: 0.9rem 1.1rem 0.2rem;
+            scrollbar-width: none;
+        }
+
+        .advisor-chat-suggestions::-webkit-scrollbar {
+            display: none;
+        }
+
+        .advisor-chat-suggestions button {
+            flex: 0 0 auto;
+            border: 1px solid rgba(96, 165, 250, 0.24);
+            background: rgba(59, 130, 246, 0.08);
+            color: #bfdbfe;
+            padding: 0.55rem 0.8rem;
+            border-radius: 999px;
+            cursor: pointer;
+            font-size: 0.82rem;
+            white-space: nowrap;
+        }
+
+        .advisor-chat-messages {
+            flex: 1;
+            min-height: 220px;
+            overflow-y: auto;
+            padding: 1rem 1.1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .advisor-message {
+            max-width: 88%;
+            padding: 0.78rem 0.92rem;
+            border-radius: 16px;
+            line-height: 1.45;
+            font-size: 0.92rem;
+            white-space: pre-wrap;
+        }
+
+        .advisor-message-user {
+            align-self: flex-end;
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.95), rgba(37, 99, 235, 0.95));
+            color: #eff6ff;
+            border-bottom-right-radius: 6px;
+        }
+
+        .advisor-message-assistant {
+            align-self: flex-start;
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-main);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-bottom-left-radius: 6px;
+        }
+
+        .advisor-chat-form {
+            display: flex;
+            gap: 0.75rem;
+            padding: 1rem 1.1rem 1.1rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(15, 23, 42, 0.92);
+        }
+
+        .advisor-chat-input {
+            flex: 1;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-main);
+            border-radius: 14px;
+            padding: 0.85rem 0.95rem;
+            outline: none;
+        }
+
+        .advisor-chat-input::placeholder {
+            color: rgba(148, 163, 184, 0.75);
+        }
+
+        .advisor-chat-submit {
+            border: none;
+            border-radius: 14px;
+            padding: 0.85rem 1rem;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            color: #fff;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        @media (max-width: 768px) {
+            nav {
+                padding: 1rem;
+            }
+
+            .nav-container {
+                flex-direction: column;
+                gap: 1rem;
+                align-items: flex-start;
+            }
+
+            .nav-links {
+                flex-wrap: wrap;
+                gap: 0.75rem;
+            }
+
+            main {
+                margin: 1.25rem auto;
+                padding: 0 1rem;
+            }
+
+            .advisor-chat-launcher {
+                right: 1rem;
+                bottom: 1rem;
+                padding: 0.9rem 1rem;
+            }
+
+            .advisor-chat-panel {
+                right: 1rem;
+                bottom: 5.25rem;
+                width: calc(100vw - 2rem);
+                max-height: 68vh;
+            }
+
+            .advisor-message {
+                max-width: 92%;
+            }
+        }
     </style>
 </head>
 <body>
@@ -408,15 +621,31 @@
                     <i class="fa-solid fa-store"></i> Catalog
                 </a>
                 {% if user %}
+                <a href="/dashboard/" class="nav-link {% if '/dashboard/' in request.path %}active{% endif %}">
+                    <i class="fa-solid fa-compass"></i> Dashboard
+                </a>
+                {% if user.role == 'admin' %}
+                <a href="/admin/dashboard/?section=users" class="nav-link {% if request.path == '/admin/dashboard/' and request.GET.section == 'users' %}active{% endif %}">
+                    <i class="fa-solid fa-users-gear"></i> Manage Users
+                </a>
+                <a href="/admin/dashboard/?section=products" class="nav-link {% if request.path == '/admin/dashboard/' and request.GET.section == 'products' %}active{% endif %}">
+                    <i class="fa-solid fa-boxes-stacked"></i> Manage Products
+                </a>
+                {% elif user.role == 'customer' %}
                 <a href="/cart/{{ user.id }}/" class="nav-link {% if '/cart/' in request.path %}active{% endif %}">
-                    <i class="fa-solid fa-cart-shopping"></i> Cart
+                    <i class="fa-solid fa-cart-shopping"></i> My Cart
                 </a>
                 <a href="/orders/" class="nav-link {% if '/orders' in request.path %}active{% endif %}">
-                    <i class="fa-solid fa-receipt"></i> Orders
+                    <i class="fa-solid fa-receipt"></i> My Orders
+                </a>
+                {% else %}
+                <a href="/books/create/" class="nav-link {% if '/books/create/' in request.path or '/books/' in request.path and '/edit/' in request.path %}active{% endif %}">
+                    <i class="fa-solid fa-boxes-stacked"></i> Manage Products
                 </a>
                 <a href="/notifications/" class="nav-link {% if '/notifications' in request.path %}active{% endif %}">
                     <i class="fa-solid fa-bell"></i>
                 </a>
+                {% endif %}
                 <a href="/profile/" class="nav-link {% if '/profile' in request.path %}active{% endif %}">
                     <i class="fa-solid fa-circle-user"></i> {{ user.username }}
                 </a>
@@ -437,7 +666,117 @@
 
     <main>
         {% block content %}
+        {% if page_title %}
+        <div class="page-header">
+            <h1>{{ page_title }}</h1>
+            {% if page_description %}
+            <p>{{ page_description }}</p>
+            {% endif %}
+        </div>
+        {% endif %}
         {% endblock %}
     </main>
+
+    {% if not user or user.role == 'customer' %}
+    <button id="advisor-chat-launcher" class="advisor-chat-launcher" type="button">
+        <i class="fa-solid fa-robot"></i>
+        <span>AI Book Advisor</span>
+    </button>
+
+    <section id="advisor-chat-panel" class="advisor-chat-panel" hidden>
+        <div class="advisor-chat-header">
+            <div>
+                <strong>AI Book Advisor</strong>
+                <p>Personalized book and service consultation</p>
+            </div>
+            <button id="advisor-chat-close" class="advisor-chat-close" type="button" aria-label="Close advisor chat">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+        <div class="advisor-chat-suggestions">
+            <button type="button" data-question="Recommend books for me">Recommend books for me</button>
+            <button type="button" data-question="What type of books should I read?">What type of books should I read?</button>
+            <button type="button" data-question="What is your shipping policy?">What is your shipping policy?</button>
+        </div>
+        <div id="advisor-chat-messages" class="advisor-chat-messages">
+            <div class="advisor-message advisor-message-assistant">Ask about books, reading preferences, or store policies.</div>
+        </div>
+        <form id="advisor-chat-form" class="advisor-chat-form">
+            <input id="advisor-chat-input" class="advisor-chat-input" type="text" placeholder="Ask for book or service advice">
+            <button class="advisor-chat-submit" type="submit">Send</button>
+        </form>
+    </section>
+
+    <script>
+        const launcher = document.getElementById("advisor-chat-launcher");
+        const panel = document.getElementById("advisor-chat-panel");
+        const closeButton = document.getElementById("advisor-chat-close");
+        const form = document.getElementById("advisor-chat-form");
+        const input = document.getElementById("advisor-chat-input");
+        const messages = document.getElementById("advisor-chat-messages");
+
+        function appendMessage(role, text) {
+            if (!messages) return;
+            const element = document.createElement("div");
+            element.className = `advisor-message advisor-message-${role}`;
+            element.textContent = text;
+            messages.appendChild(element);
+            messages.scrollTop = messages.scrollHeight;
+            return element;
+        }
+
+        launcher?.addEventListener("click", () => {
+            panel.hidden = false;
+            input?.focus();
+        });
+
+        closeButton?.addEventListener("click", () => {
+            panel.hidden = true;
+        });
+
+        document.querySelectorAll(".advisor-chat-suggestions button").forEach((button) => {
+            button.addEventListener("click", () => {
+                if (!input || !form) return;
+                input.value = button.dataset.question || "";
+                if (typeof form.requestSubmit === "function") {
+                    form.requestSubmit();
+                } else {
+                    form.dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
+                }
+            });
+        });
+
+        form?.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            const question = input?.value.trim() || "";
+            if (!question) return;
+
+            appendMessage("user", question);
+            const pending = appendMessage("assistant", "Thinking...");
+            input.value = "";
+
+            try {
+                const response = await fetch("/advisor/chat/", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ question }),
+                });
+
+                let data;
+                try {
+                    data = await response.json();
+                } catch (error) {
+                    data = { error: "Advisor unavailable." };
+                }
+
+                pending?.remove();
+                appendMessage("assistant", data.answer || data.error || "Advisor unavailable.");
+            } catch (error) {
+                pending?.remove();
+                appendMessage("assistant", "Advisor unavailable.");
+            }
+        });
+    </script>
+    {% endif %}
 </body>
 </html>

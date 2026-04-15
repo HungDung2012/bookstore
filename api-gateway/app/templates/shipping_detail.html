@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}Shipping Detail | Microstore{% endblock %}
+
+{% block content %}
+<div style="max-width:900px; margin:0 auto;">
+    <a href="{% if user.role == 'staff' %}/staff/shipping/{% else %}/orders/{% endif %}" style="color:var(--text-muted); text-decoration:none; display:inline-flex; align-items:center; gap:0.5rem; margin-bottom:1rem;">
+        <i class="fa-solid fa-arrow-left"></i>
+        {% if user.role == 'staff' %}Back to shipping queue{% else %}Back to orders{% endif %}
+    </a>
+
+    {% if error %}
+    <div class="error-msg">
+        <i class="fa-solid fa-circle-exclamation"></i>
+        <span>{{ error }}</span>
+    </div>
+    {% endif %}
+
+    <div class="glass-card">
+        <div class="card-header">
+            <div>
+                <h1 class="card-title" style="font-size:1.6rem;">Order #{{ order.id }}</h1>
+                <p class="card-subtitle">{{ order.shipping_name }} • {{ order.shipping_phone }}</p>
+            </div>
+            {% if shipment %}
+            <span class="stock-badge"
+                {% if shipment.status == "delivered" %}
+                style="background:rgba(16,185,129,0.1); color:#34d399; border-color:rgba(16,185,129,0.2);"
+                {% elif shipment.status == "shipping" %}
+                style="background:rgba(59,130,246,0.1); color:#60a5fa; border-color:rgba(59,130,246,0.2);"
+                {% elif shipment.status == "packed" %}
+                style="background:rgba(168,85,247,0.1); color:#c084fc; border-color:rgba(168,85,247,0.2);"
+                {% else %}
+                style="background:rgba(234,179,8,0.1); color:#facc15; border-color:rgba(234,179,8,0.2);"
+                {% endif %}
+            >{{ shipment.status|upper }}</span>
+            {% else %}
+            <span class="stock-badge" style="background:rgba(148,163,184,0.1); color:#cbd5e1; border-color:rgba(148,163,184,0.2);">NOT CREATED</span>
+            {% endif %}
+        </div>
+
+        <div style="margin:1rem 0; padding:1rem; background:rgba(15,23,42,0.4); border-radius:12px;">
+            <p style="color:var(--text-muted); margin-bottom:0.5rem;"><i class="fa-solid fa-location-dot"></i> {{ order.shipping_address }}</p>
+            <p style="color:var(--text-muted); margin-bottom:0.5rem;"><i class="fa-solid fa-money-bill-wave"></i> Order total: ${{ order.total_amount }}</p>
+            <p style="color:var(--text-muted);"><i class="fa-solid fa-receipt"></i> Order state: {{ order.status|upper }}</p>
+        </div>
+
+        {% if shipment %}
+        <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));">
+            <article class="glass-card" style="padding:1rem;">
+                <p class="card-subtitle">Tracking code</p>
+                <h2 class="card-title" style="margin-top:0.35rem;">{{ shipment.tracking_code }}</h2>
+            </article>
+            <article class="glass-card" style="padding:1rem;">
+                <p class="card-subtitle">Created</p>
+                <h2 class="card-title" style="margin-top:0.35rem;">{{ shipment.created_at|truncatechars:19 }}</h2>
+            </article>
+            <article class="glass-card" style="padding:1rem;">
+                <p class="card-subtitle">Last updated</p>
+                <h2 class="card-title" style="margin-top:0.35rem;">{{ shipment.updated_at|truncatechars:19 }}</h2>
+            </article>
+        </div>
+
+        {% if user.role == "staff" %}
+        <form method="post" style="margin-top:1.5rem;">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="status">Update shipping status</label>
+                    <select id="status" name="status">
+                        {% for option in shipping_status_options %}
+                        <option value="{{ option }}" {% if shipment.status == option %}selected{% endif %}>{{ option|title }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <button type="submit" class="action-btn">
+                <i class="fa-solid fa-truck"></i> Save status
+            </button>
+        </form>
+        {% endif %}
+        {% else %}
+        <div class="empty-state" style="margin-top:1rem;">
+            <i class="fa-solid fa-box-open"></i>
+            <p>This order does not have a shipment record yet.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

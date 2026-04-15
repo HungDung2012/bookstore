@@ -1,0 +1,102 @@
+﻿{% extends "base.html" %}
+{% block title %}Manage Users | Microstore{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>{{ page_title }}</h1>
+    <p>{{ page_description }}</p>
+</div>
+
+<section class="grid" style="margin-bottom:1.5rem;">
+    <article class="glass-card">
+        <div class="card-header">
+            <div>
+                <h2 class="card-title">Total Users</h2>
+                <p class="card-subtitle">Accounts returned from the user service</p>
+            </div>
+            <span class="price-tag">{{ user_summary.total }}</span>
+        </div>
+        <div class="card-body">
+            <p>{{ user_summary.filtered }} users match the current filters.</p>
+        </div>
+    </article>
+    <article class="glass-card">
+        <div class="card-header">
+            <div>
+                <h2 class="card-title">Active Accounts</h2>
+                <p class="card-subtitle">Accounts currently enabled for login</p>
+            </div>
+            <span class="price-tag">{{ user_summary.active }}</span>
+        </div>
+    </article>
+    <article class="glass-card">
+        <div class="card-header">
+            <div>
+                <h2 class="card-title">Role Split</h2>
+                <p class="card-subtitle">Staff and customer accounts in the catalog</p>
+            </div>
+        </div>
+        <div class="card-body">
+            <p>Staff: {{ user_summary.staff }} | Customers: {{ user_summary.customers }}</p>
+        </div>
+    </article>
+</section>
+
+<section class="glass-card" style="margin-bottom:1.5rem;">
+    <form method="get" action="/admin/dashboard/" style="display:grid; gap:1rem; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); align-items:end;">
+        <input type="hidden" name="section" value="users">
+        <div class="form-group">
+            <label for="user-search">Search</label>
+            <input id="user-search" type="search" name="q" value="{{ query }}" placeholder="Username, email, or name">
+        </div>
+        <div class="form-group">
+            <label for="user-role">Role</label>
+            <select id="user-role" name="role">
+                <option value="all" {% if role_filter == 'all' or role_filter == '' %}selected{% endif %}>All roles</option>
+                <option value="admin" {% if role_filter == 'admin' %}selected{% endif %}>Admin</option>
+                <option value="staff" {% if role_filter == 'staff' %}selected{% endif %}>Staff</option>
+                <option value="customer" {% if role_filter == 'customer' %}selected{% endif %}>Customer</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="user-status">Status</label>
+            <select id="user-status" name="status">
+                <option value="all" {% if status_filter == 'all' or status_filter == '' %}selected{% endif %}>All status</option>
+                <option value="active" {% if status_filter == 'active' %}selected{% endif %}>Active</option>
+                <option value="inactive" {% if status_filter == 'inactive' %}selected{% endif %}>Inactive</option>
+            </select>
+        </div>
+        <button class="action-btn" type="submit" style="width:auto; min-width:180px;">
+            <i class="fa-solid fa-filter"></i> Apply filters
+        </button>
+    </form>
+</section>
+
+{% if users %}
+<div class="grid">
+    {% for account in users %}
+    <article class="glass-card">
+        <div class="card-header">
+            <div>
+                <h2 class="card-title">{{ account.display_name }}</h2>
+                <p class="card-subtitle">@{{ account.username }} | {{ account.email }}</p>
+            </div>
+            <span class="price-tag">{{ account.role|upper }}</span>
+        </div>
+        <div class="card-body">
+            <p style="margin-bottom:0.5rem;">{{ account.phone }}</p>
+            <p style="color:var(--text-muted); margin-bottom:0.75rem;">{{ account.address }}</p>
+            <span class="stock-badge" style="{% if account.status_label == 'Active' %}background:rgba(16,185,129,0.1); color:#34d399; border-color:rgba(16,185,129,0.2);{% else %}background:rgba(239,68,68,0.1); color:#f87171; border-color:rgba(239,68,68,0.2);{% endif %}">
+                {{ account.status_label }}
+            </span>
+        </div>
+    </article>
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+    <i class="fa-solid fa-users-gear"></i>
+    <h3>No users match the current filters</h3>
+    <p>Try clearing the search or adjusting role and status filters.</p>
+</div>
+{% endif %}
+{% endblock %}

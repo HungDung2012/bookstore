@@ -1,7 +1,5 @@
 from collections import Counter
 
-from .behavior_dataset import BehaviorDatasetSchema
-
 
 def _safe_int(value, default=0):
     try:
@@ -102,19 +100,3 @@ def infer_behavior_label(features):
     if features.get("category_8_count", 0) >= 2:
         return "family_reader"
     return "casual_buyer"
-
-
-def build_behavior_dataset_schema(rows):
-    return BehaviorDatasetSchema.from_rows(rows)
-
-
-def vectorize_behavior_features(schema, features):
-    return schema.vectorize_features(features)
-
-
-def encode_behavior_label(schema, label):
-    return schema.encode_label(label)
-
-
-def export_behavior_dataset_metadata(schema):
-    return schema.to_metadata()

@@ -21,7 +21,7 @@ class CartItemTests(TestCase):
 
         response = self.client.post(
             "/cart-items/",
-            {"cart": 7, "book_id": 3, "quantity": 2},
+            {"cart": cart.id, "customer_id": 7, "book_id": 3, "quantity": 2},
             format="json",
         )
 
@@ -42,10 +42,46 @@ class CartItemTests(TestCase):
 
         response = self.client.post(
             "/cart-items/",
-            {"cart": 9, "book_id": 5, "quantity": 4},
+            {"cart": cart.id, "customer_id": 9, "book_id": 5, "quantity": 4},
             format="json",
         )
 
         self.assertEqual(response.status_code, 200)
         item = CartItem.objects.get(cart=cart, book_id=5)
         self.assertEqual(item.quantity, 5)
+
+    @patch("app.views.requests.get")
+    def test_add_item_rejects_other_customers_cart(self, mock_get):
+        owner_cart = Cart.objects.create(customer_id=12)
+        Cart.objects.create(customer_id=13)
+
+        books_response = Mock(status_code=200)
+        books_response.json.return_value = [{"id": 8, "title": "Demo"}]
+        books_response.raise_for_status.return_value = None
+        mock_get.return_value = books_response
+
+        response = self.client.post(
+            "/cart-items/",
+            {"cart": owner_cart.id, "customer_id": 13, "book_id": 8, "quantity": 1},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["error"], "You cannot modify another user's cart")
+        self.assertFalse(CartItem.objects.filter(book_id=8).exists())
+
+    @patch("app.views.requests.get")
+    def test_add_item_requires_customer_scope(self, mock_get):
+        books_response = Mock(status_code=200)
+        books_response.json.return_value = [{"id": 9, "title": "Demo"}]
+        books_response.raise_for_status.return_value = None
+        mock_get.return_value = books_response
+
+        response = self.client.post(
+            "/cart-items/",
+            {"cart": 1, "book_id": 9, "quantity": 1},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"], "customer_id is required")

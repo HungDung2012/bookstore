@@ -1,0 +1,12 @@
+[
+  {
+    "id": "faq_shipping_policy",
+    "title": "Shipping policy",
+    "doc_type": "faq",
+    "source_service": "notification-service",
+    "category": "operations",
+    "target_segment": "all",
+    "tags": ["shipping", "delivery", "policy"],
+    "text": "Orders are processed after successful confirmation. Shipping updates are sent through the notification system."
+  }
+]

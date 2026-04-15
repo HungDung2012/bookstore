@@ -18,6 +18,7 @@ def _service_url(env_name, default):
 
 
 ORDER_SERVICE_URL = _service_url("ORDER_SERVICE_URL", "order-service:8000")
+DEMO_METHODS = {"demo_success", "demo_fail"}
 
 
 class PaymentListCreate(APIView):
@@ -30,7 +31,12 @@ class PaymentListCreate(APIView):
         return Response(PaymentSerializer(payments, many=True).data)
 
     def post(self, request):
-        serializer = PaymentCreateSerializer(data=request.data)
+        request_data = request.data.copy()
+        requested_method = request_data.get("method")
+        if requested_method in DEMO_METHODS:
+            request_data["method"] = "bank_transfer"
+
+        serializer = PaymentCreateSerializer(data=request_data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -40,6 +46,44 @@ class PaymentListCreate(APIView):
             return Response(PaymentSerializer(existing).data)
 
         payment = Payment.objects.create(**data)
+        if requested_method == "demo_success":
+            payment.status = "completed"
+            payment.save(update_fields=["status", "updated_at"])
+            try:
+                requests.put(
+                    f"{ORDER_SERVICE_URL}/orders/{payment.order_id}/status/",
+                    json={"status": "paid"},
+                    timeout=5,
+                )
+            except requests.exceptions.RequestException:
+                pass
+            return Response(
+                {
+                    "message": "Demo payment successful",
+                    "payment": PaymentSerializer(payment).data,
+                },
+                status=status.HTTP_201_CREATED,
+            )
+
+        if requested_method == "demo_fail":
+            payment.status = "failed"
+            payment.save(update_fields=["status", "updated_at"])
+            try:
+                requests.put(
+                    f"{ORDER_SERVICE_URL}/orders/{payment.order_id}/status/",
+                    json={"status": "cancelled"},
+                    timeout=5,
+                )
+            except requests.exceptions.RequestException:
+                pass
+            return Response(
+                {
+                    "message": "Demo payment failed",
+                    "payment": PaymentSerializer(payment).data,
+                },
+                status=status.HTTP_201_CREATED,
+            )
+
         if data["method"] == "cod":
             payment.status = "completed"
             payment.save(update_fields=["status", "updated_at"])

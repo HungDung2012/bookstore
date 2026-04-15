@@ -1,0 +1,102 @@
+﻿{% extends "base.html" %}
+{% block title %}Manage Products | Microstore{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>{{ page_title }}</h1>
+    <p>{{ page_description }}</p>
+</div>
+
+<section class="grid" style="margin-bottom:1.5rem;">
+    <article class="glass-card">
+        <div class="card-header">
+            <div>
+                <h2 class="card-title">Total Products</h2>
+                <p class="card-subtitle">Books returned from the book service</p>
+            </div>
+            <span class="price-tag">{{ product_summary.total }}</span>
+        </div>
+        <div class="card-body">
+            <p>{{ product_summary.filtered }} products match the current filters.</p>
+        </div>
+    </article>
+    <article class="glass-card">
+        <div class="card-header">
+            <div>
+                <h2 class="card-title">Low Stock</h2>
+                <p class="card-subtitle">Catalog items needing attention</p>
+            </div>
+            <span class="price-tag">{{ product_summary.low_stock }}</span>
+        </div>
+    </article>
+    <article class="glass-card">
+        <div class="card-header">
+            <div>
+                <h2 class="card-title">Out of Stock</h2>
+                <p class="card-subtitle">Items unavailable for customers</p>
+            </div>
+            <span class="price-tag">{{ product_summary.out_of_stock }}</span>
+        </div>
+    </article>
+</section>
+
+<section class="glass-card" style="margin-bottom:1.5rem;">
+    <form method="get" action="/admin/dashboard/" style="display:grid; gap:1rem; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); align-items:end;">
+        <input type="hidden" name="section" value="products">
+        <div class="form-group">
+            <label for="product-search">Search</label>
+            <input id="product-search" type="search" name="q" value="{{ query }}" placeholder="Title, author, category, publisher">
+        </div>
+        <div class="form-group">
+            <label for="product-category">Category</label>
+            <select id="product-category" name="category">
+                <option value="all" {% if category_filter == 'all' or category_filter == '' %}selected{% endif %}>All categories</option>
+                {% for category in categories %}
+                <option value="{{ category.id }}" {% if category_filter == category.id|stringformat:'s' %}selected{% endif %}>{{ category.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="product-stock">Stock</label>
+            <select id="product-stock" name="stock">
+                <option value="all" {% if stock_filter == 'all' or stock_filter == '' %}selected{% endif %}>All stock levels</option>
+                <option value="in_stock" {% if stock_filter == 'in_stock' %}selected{% endif %}>In stock</option>
+                <option value="low" {% if stock_filter == 'low' %}selected{% endif %}>Low stock</option>
+                <option value="out" {% if stock_filter == 'out' %}selected{% endif %}>Out of stock</option>
+            </select>
+        </div>
+        <button class="action-btn" type="submit" style="width:auto; min-width:180px;">
+            <i class="fa-solid fa-filter"></i> Apply filters
+        </button>
+    </form>
+</section>
+
+{% if books %}
+<div class="grid">
+    {% for book in books %}
+    <article class="glass-card">
+        <div class="card-header">
+            <div>
+                <h2 class="card-title">{{ book.title }}</h2>
+                <p class="card-subtitle">{{ book.author }}</p>
+            </div>
+            <span class="price-tag">${{ book.price }}</span>
+        </div>
+        <div class="card-body">
+            <p style="margin-bottom:0.5rem;">Category: {{ book.category_name }}</p>
+            <p style="margin-bottom:0.5rem;">Publisher: {{ book.publisher_name }}</p>
+            <span class="stock-badge">{{ book.stock_label }}</span>
+            <span class="stock-badge" style="margin-left:0.5rem; background:rgba(59,130,246,0.1); color:#60a5fa; border-color:rgba(59,130,246,0.2);">
+                {{ book.stock }} in stock
+            </span>
+        </div>
+    </article>
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+    <i class="fa-solid fa-boxes-stacked"></i>
+    <h3>No products match the current filters</h3>
+    <p>Try clearing the search or changing category and stock filters.</p>
+</div>
+{% endif %}
+{% endblock %}
