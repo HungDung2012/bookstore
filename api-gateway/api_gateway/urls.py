@@ -25,6 +25,8 @@ from app.views import (
     profile_view,
     register_view,
     role_dashboard_view,
+    shipping_detail,
+    staff_shipping_view,
     update_cart_item,
     view_cart,
 )
@@ -62,5 +64,7 @@ urlpatterns = [
     path("orders/", order_list, name="order_list"),
     path("orders/<int:pk>/", order_detail, name="order_detail"),
     path("orders/<int:pk>/cancel/", cancel_order, name="cancel_order"),
+    path("staff/shipping/", staff_shipping_view, name="staff_shipping"),
+    path("shipping/<int:order_id>/", shipping_detail, name="shipping_detail"),
     path("notifications/", notifications_view, name="notifications"),
 ]

@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}Staff Shipping | Microstore{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Shipping management</h1>
+    <p>Create shipments for paid orders and keep delivery state accurate for customers.</p>
+</div>
+
+{% if error %}
+<div class="error-msg">
+    <i class="fa-solid fa-circle-exclamation"></i>
+    <span>{{ error }}</span>
+</div>
+{% endif %}
+
+<section class="grid" style="margin-bottom: 2rem;">
+    {% for shipment in shipments %}
+    <article class="glass-card">
+        <div class="card-header">
+            <div>
+                <h2 class="card-title">Shipment {{ shipment.tracking_code }}</h2>
+                <p class="card-subtitle">Order #{{ shipment.order_id }}</p>
+            </div>
+            <span class="stock-badge"
+                {% if shipment.status == "delivered" %}
+                style="background:rgba(16,185,129,0.1); color:#34d399; border-color:rgba(16,185,129,0.2);"
+                {% elif shipment.status == "shipping" %}
+                style="background:rgba(59,130,246,0.1); color:#60a5fa; border-color:rgba(59,130,246,0.2);"
+                {% elif shipment.status == "packed" %}
+                style="background:rgba(168,85,247,0.1); color:#c084fc; border-color:rgba(168,85,247,0.2);"
+                {% else %}
+                style="background:rgba(234,179,8,0.1); color:#facc15; border-color:rgba(234,179,8,0.2);"
+                {% endif %}
+            >{{ shipment.status|upper }}</span>
+        </div>
+        <div class="card-body">
+            <p class="card-subtitle">Created {{ shipment.created_at|truncatechars:19 }}</p>
+        </div>
+        <a class="action-btn" href="/shipping/{{ shipment.order_id }}/">
+            <i class="fa-solid fa-truck-fast"></i> Open shipment
+        </a>
+    </article>
+    {% empty %}
+    <div class="empty-state">
+        <i class="fa-solid fa-truck-ramp-box"></i>
+        <p>No shipments yet. Create one from the order queue below.</p>
+    </div>
+    {% endfor %}
+</section>
+
+<section>
+    <div class="page-header" style="text-align:left; margin-bottom: 1rem;">
+        <h2 style="font-size:1.5rem;">Order queue</h2>
+        <p>Only paid and active orders are eligible for shipment creation.</p>
+    </div>
+
+    <div class="grid">
+        {% for order in orders %}
+        <article class="glass-card">
+            <div class="card-header">
+                <div>
+                    <h3 class="card-title">Order #{{ order.id }}</h3>
+                    <p class="card-subtitle">{{ order.shipping_name }} • {{ order.shipping_phone }}</p>
+                </div>
+                <span class="price-tag">${{ order.total_amount }}</span>
+            </div>
+            <div class="card-body">
+                <p class="card-subtitle" style="margin-bottom:0.75rem;">{{ order.shipping_address }}</p>
+                <p>
+                    <strong>Order status:</strong>
+                    <span style="color:var(--text-muted);">{{ order.status|upper }}</span>
+                </p>
+                {% if order.shipment %}
+                <p style="margin-top:0.5rem;">
+                    <strong>Shipment:</strong>
+                    <span style="color:var(--text-muted);">{{ order.shipment.tracking_code }} • {{ order.shipment.status|upper }}</span>
+                </p>
+                {% else %}
+                <p style="margin-top:0.5rem; color:var(--text-muted);">Shipment not created yet.</p>
+                {% endif %}
+            </div>
+            {% if order.shipment %}
+            <a class="action-btn" href="/shipping/{{ order.id }}/">
+                <i class="fa-solid fa-eye"></i> View details
+            </a>
+            {% elif order.can_create_shipment %}
+            <form method="post">
+                <input type="hidden" name="order_id" value="{{ order.id }}">
+                <button type="submit" class="action-btn">
+                    <i class="fa-solid fa-box-open"></i> Create shipment
+                </button>
+            </form>
+            {% else %}
+            <div class="card-body" style="padding-top:0;">
+                <p style="color:var(--text-muted);">Wait until the order is paid before creating a shipment.</p>
+            </div>
+            {% endif %}
+        </article>
+        {% empty %}
+        <div class="empty-state">
+            <i class="fa-solid fa-inbox"></i>
+            <p>No orders available for shipping management.</p>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}
