@@ -1,3 +1,4 @@
+import logging
 import json
 from pathlib import Path
 
@@ -10,6 +11,55 @@ from app.services.behavior_model import build_behavior_model
 APP_DIR = Path(__file__).resolve().parents[2]
 DATASET_PATH = APP_DIR / "data" / "training" / "behavior_dataset.csv"
 OUTPUT_DIR = APP_DIR / "data" / "models"
+logger = logging.getLogger(__name__)
+
+
+def _portable_path(path):
+    path = Path(path)
+    try:
+        return path.relative_to(APP_DIR).as_posix()
+    except ValueError:
+        return path.name
+
+
+def _should_stratify_split(labels, test_size=0.2):
+    unique_labels, counts = np.unique(labels, return_counts=True)
+    if len(unique_labels) < 2:
+        raise CommandError("Training dataset must contain at least two behavior classes.")
+    if len(labels) < 2:
+        raise CommandError("Training dataset must contain at least two training rows.")
+
+    test_count = int(np.ceil(test_size * len(labels)))
+    train_count = len(labels) - test_count
+    if counts.min() < 2:
+        logger.warning(
+            "Behavior dataset class counts are too small for a stratified split; using an unstratified split instead."
+        )
+        return None
+    if test_count < len(unique_labels) or train_count < len(unique_labels):
+        logger.warning(
+            "Behavior dataset is too small for a stratified split; using an unstratified split instead."
+        )
+        return None
+    return labels
+
+
+def _split_behavior_data(X, y, labels, splitter, test_size=0.2, random_state=42):
+    stratify = _should_stratify_split(labels, test_size=test_size)
+    return splitter(X, y, test_size=test_size, random_state=random_state, stratify=stratify)
+
+
+def _build_metadata(schema, dataset_path, model_path, features_path, labels_path, training_rows, test_rows, accuracy):
+    return {
+        **schema.to_metadata(),
+        "dataset_path": _portable_path(dataset_path),
+        "model_path": _portable_path(model_path),
+        "features_path": _portable_path(features_path),
+        "labels_path": _portable_path(labels_path),
+        "training_rows": training_rows,
+        "test_rows": test_rows,
+        "accuracy": float(accuracy),
+    }
 
 
 class Command(BaseCommand):
@@ -49,8 +99,11 @@ class Command(BaseCommand):
         y = np.asarray([schema.encode_label(row["label"]) for row in records], dtype="int32")
         y_one_hot = to_categorical(y, num_classes=len(schema.labels))
 
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y_one_hot, test_size=0.2, random_state=42
+        X_train, X_test, y_train, y_test = _split_behavior_data(
+            X,
+            y_one_hot,
+            y,
+            train_test_split,
         )
 
         model = build_behavior_model(input_dim=X_train.shape[1], output_dim=y_one_hot.shape[1])
@@ -65,15 +118,15 @@ class Command(BaseCommand):
         features_path.write_text("\n".join(schema.feature_names), encoding="utf-8")
         labels_path.write_text("\n".join(schema.labels), encoding="utf-8")
         _, accuracy = model.evaluate(X_test, y_test, verbose=0)
-        metadata = {
-            **schema.to_metadata(),
-            "dataset_path": str(DATASET_PATH),
-            "model_path": str(model_path),
-            "features_path": str(features_path),
-            "labels_path": str(labels_path),
-            "training_rows": len(records),
-            "test_rows": int(len(X_test)),
-            "accuracy": float(accuracy),
-        }
+        metadata = _build_metadata(
+            schema=schema,
+            dataset_path=DATASET_PATH,
+            model_path=model_path,
+            features_path=features_path,
+            labels_path=labels_path,
+            training_rows=len(records),
+            test_rows=int(len(X_test)),
+            accuracy=accuracy,
+        )
         metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
         self.stdout.write(self.style.SUCCESS(f"Model trained with accuracy={accuracy:.2f}"))

@@ -7,6 +7,7 @@ from unittest.mock import patch
 from django.test import TestCase
 from rest_framework.test import APIClient
 
+from app.management.commands import train_behavior_model as train_behavior_model_module
 from app.services.behavior_dataset import BehaviorDatasetSchema
 from app.services.behavior_model import BehaviorModelService
 
@@ -188,7 +189,7 @@ class BehaviorModelDefinitionTests(TestCase):
 
 
 class BehaviorModelMetadataTests(TestCase):
-    def test_predict_prefers_metadata_artifact_ordering(self):
+    def test_predict_falls_back_to_artifact_files_when_metadata_is_inconsistent(self):
         from app.services import behavior_model as behavior_model_module
 
         class FakeModel:
@@ -197,7 +198,7 @@ class BehaviorModelMetadataTests(TestCase):
 
             def predict(self, vector, verbose=0):
                 self.seen_vector = vector
-                return [[0.2, 0.8]]
+                return [[0.8, 0.2]]
 
         fake_model = FakeModel()
 
@@ -226,6 +227,54 @@ class BehaviorModelMetadataTests(TestCase):
                 result = service.predict({"a": 1, "b": 2})
 
         self.assertEqual(result["behavior_segment"], "yes")
-        self.assertEqual(fake_model.seen_vector.tolist(), [[2.0, 1.0]])
-        self.assertEqual(service._load_feature_names(), ["b", "a"])
-        self.assertEqual(service._load_labels(), ["no", "yes"])
+        self.assertEqual(fake_model.seen_vector.tolist(), [[1.0, 2.0]])
+        self.assertEqual(service._load_feature_names(), ["a", "b"])
+        self.assertEqual(service._load_labels(), ["yes", "no"])
+
+
+class BehaviorModelTrainingTests(TestCase):
+    def test_split_uses_stratify_when_class_counts_are_safe(self):
+        stratify_args = {}
+
+        def fake_split(X, y, test_size, random_state, stratify):
+            stratify_args["stratify"] = stratify
+            return X[:4], X[4:], y[:4], y[4:]
+
+        X = [[float(index)] for index in range(15)]
+        y = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2]
+
+        train_behavior_model_module._split_behavior_data(X, y, y, fake_split)
+
+        self.assertEqual(stratify_args["stratify"], y)
+
+    def test_split_disables_stratify_for_skewed_class_counts(self):
+        stratify_args = {}
+
+        def fake_split(X, y, test_size, random_state, stratify):
+            stratify_args["stratify"] = stratify
+            return X[:4], X[4:], y[:4], y[4:]
+
+        X = [[0.0], [1.0], [2.0], [3.0], [4.0], [5.0]]
+        y = [0, 0, 0, 0, 0, 1]
+
+        train_behavior_model_module._split_behavior_data(X, y, y, fake_split)
+
+        self.assertIsNone(stratify_args["stratify"])
+
+    def test_metadata_uses_portable_relative_paths(self):
+        schema = BehaviorDatasetSchema(feature_names=["a", "b"], labels=["no", "yes"])
+        metadata = train_behavior_model_module._build_metadata(
+            schema=schema,
+            dataset_path=Path("c:/Users/admin/django_demo/bookstore-microservice/advisor-service/data/training/behavior_dataset.csv"),
+            model_path=Path("c:/Users/admin/django_demo/bookstore-microservice/advisor-service/data/models/model_behavior.h5"),
+            features_path=Path("c:/Users/admin/django_demo/bookstore-microservice/advisor-service/data/models/features.txt"),
+            labels_path=Path("c:/Users/admin/django_demo/bookstore-microservice/advisor-service/data/models/labels.txt"),
+            training_rows=6,
+            test_rows=2,
+            accuracy=0.75,
+        )
+
+        self.assertFalse(Path(metadata["dataset_path"]).is_absolute())
+        self.assertFalse(Path(metadata["model_path"]).is_absolute())
+        self.assertFalse(Path(metadata["features_path"]).is_absolute())
+        self.assertFalse(Path(metadata["labels_path"]).is_absolute())

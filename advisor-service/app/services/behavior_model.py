@@ -101,29 +101,48 @@ class BehaviorModelService:
 
         return payload
 
+    def _normalize_metadata_list(self, values):
+        if not isinstance(values, (list, tuple)):
+            return None
+
+        normalized = [str(value).strip() for value in values if str(value).strip()]
+        return normalized or None
+
     def _load_metadata(self):
         if self._metadata is None:
             self._metadata = self._read_json_artifact(self.metadata_path, "metadata")
         return self._metadata
 
+    def _load_artifact_list(self, metadata_key, artifact_path, artifact_name):
+        metadata = self._load_metadata() or {}
+        metadata_values = None
+        if isinstance(metadata, dict):
+            metadata_values = self._normalize_metadata_list(metadata.get(metadata_key))
+
+        artifact_values = self._read_artifact_lines(artifact_path, artifact_name)
+        if metadata_values is None:
+            return artifact_values
+        if artifact_values is None:
+            return metadata_values
+        if metadata_values != artifact_values:
+            logger.warning(
+                "Behavior model %s metadata at %s is inconsistent with %s artifact at %s; using artifact file instead",
+                metadata_key,
+                self.metadata_path,
+                artifact_name,
+                artifact_path,
+            )
+            return artifact_values
+        return metadata_values
+
     def _load_labels(self):
         if self._labels is None:
-            metadata = self._load_metadata() or {}
-            labels = metadata.get("labels") if isinstance(metadata, dict) else None
-            if labels:
-                self._labels = [str(label).strip() for label in labels if str(label).strip()]
-            if self._labels is None:
-                self._labels = self._read_artifact_lines(self.labels_path, "labels")
+            self._labels = self._load_artifact_list("labels", self.labels_path, "labels")
         return self._labels
 
     def _load_feature_names(self):
         if self._feature_names is None:
-            metadata = self._load_metadata() or {}
-            feature_names = metadata.get("feature_names") if isinstance(metadata, dict) else None
-            if feature_names:
-                self._feature_names = [str(name).strip() for name in feature_names if str(name).strip()]
-            if self._feature_names is None:
-                self._feature_names = self._read_artifact_lines(self.features_path, "features")
+            self._feature_names = self._load_artifact_list("feature_names", self.features_path, "features")
         return self._feature_names
 
     def _load_model(self):
