@@ -69,14 +69,6 @@
     }
   },
   {
-    "id": "category:business",
-    "type": "category",
-    "label": "Business",
-    "metadata": {
-      "department": "career"
-    }
-  },
-  {
     "id": "service:payment",
     "type": "service",
     "label": "Payment service",

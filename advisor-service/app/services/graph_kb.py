@@ -44,17 +44,35 @@ class GraphKnowledgeBase:
     def _read_json(self, filename):
         path = self.base_path / filename
         if not path.exists():
-            return []
-        return json.loads(path.read_text(encoding="utf-8"))
+            raise FileNotFoundError(f"Graph knowledge base file not found: {path}")
+
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Graph knowledge base file is not valid JSON: {path}") from exc
+
+        if not isinstance(payload, list):
+            raise ValueError(f"Graph knowledge base file must contain a JSON array: {path}")
+
+        return payload
+
+    def _require_nonblank_string(self, item, field_name, record_type):
+        value = item.get(field_name)
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"{record_type} record must include a non-blank '{field_name}'")
+        return value.strip()
 
     def _load_nodes(self):
         nodes = {}
         for item in self._read_json("nodes.json"):
-            if not isinstance(item, dict) or not item.get("id"):
-                continue
+            if not isinstance(item, dict):
+                raise ValueError("Node record must be a JSON object")
+            node_id = self._require_nonblank_string(item, "id", "Node")
+            if node_id in nodes:
+                raise ValueError(f"Duplicate node id: {node_id}")
             metadata = item.get("metadata") or {}
-            nodes[item["id"]] = GraphNode(
-                id=item["id"],
+            nodes[node_id] = GraphNode(
+                id=node_id,
                 type=str(item.get("type", "")).strip(),
                 label=str(item.get("label", "")).strip(),
                 metadata=metadata if isinstance(metadata, dict) else {},
@@ -65,31 +83,49 @@ class GraphKnowledgeBase:
         edges = []
         for item in self._read_json("edges.json"):
             if not isinstance(item, dict):
-                continue
+                raise ValueError("Edge record must be a JSON object")
             metadata = item.get("metadata") or {}
+            source = self._require_nonblank_string(item, "source", "Edge")
+            target = self._require_nonblank_string(item, "target", "Edge")
+            relation = self._require_nonblank_string(item, "relation", "Edge")
+            weight = item.get("weight", 1.0)
+            if weight is None:
+                weight = 1.0
             edges.append(
                 GraphEdge(
-                    source=str(item.get("source", "")).strip(),
-                    target=str(item.get("target", "")).strip(),
-                    relation=str(item.get("relation", "")).strip(),
-                    weight=float(item.get("weight", 1.0) or 1.0),
+                    source=source,
+                    target=target,
+                    relation=relation,
+                    weight=float(weight),
                     metadata=metadata if isinstance(metadata, dict) else {},
                 )
             )
+
+        for edge in edges:
+            if edge.source not in self.nodes or edge.target not in self.nodes:
+                raise ValueError(
+                    f"Edge endpoints must reference existing nodes: {edge.source} -> {edge.target}"
+                )
         return edges
 
     def _load_facts(self):
         facts = []
         for item in self._read_json("facts.json"):
-            if not isinstance(item, dict) or not item.get("id"):
-                continue
+            if not isinstance(item, dict):
+                raise ValueError("Fact record must be a JSON object")
             metadata = item.get("metadata") or {}
+            fact_id = self._require_nonblank_string(item, "id", "Fact")
+            node_id = self._require_nonblank_string(item, "node_id", "Fact")
+            relation = self._require_nonblank_string(item, "relation", "Fact")
+            statement = self._require_nonblank_string(item, "statement", "Fact")
+            if node_id not in self.nodes:
+                raise ValueError(f"Fact node_id must reference an existing node: {node_id}")
             facts.append(
                 GraphFact(
-                    id=item["id"],
-                    node_id=str(item.get("node_id", "")).strip(),
-                    relation=str(item.get("relation", "")).strip(),
-                    statement=str(item.get("statement", "")).strip(),
+                    id=fact_id,
+                    node_id=node_id,
+                    relation=relation,
+                    statement=statement,
                     metadata=metadata if isinstance(metadata, dict) else {},
                 )
             )

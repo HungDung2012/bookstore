@@ -363,3 +363,119 @@ class GraphKnowledgeBaseTests(TestCase):
         adjacency = graph.edges_for_node("segment:tech_reader")
         self.assertTrue(adjacency["outgoing"])
         self.assertTrue(any(edge.target == "category:programming" for edge in adjacency["outgoing"]))
+
+    def test_graph_loads_explicit_zero_weight_edges(self):
+        with TemporaryDirectory() as tmpdir:
+            base_path = Path(tmpdir)
+            (base_path / "nodes.json").write_text(
+                json.dumps(
+                    [
+                        {"id": "node:a", "type": "segment", "label": "A"},
+                        {"id": "node:b", "type": "category", "label": "B"},
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            (base_path / "edges.json").write_text(
+                json.dumps(
+                    [
+                        {
+                            "source": "node:a",
+                            "target": "node:b",
+                            "relation": "links_to",
+                            "weight": 0,
+                        }
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            (base_path / "facts.json").write_text("[]", encoding="utf-8")
+
+            graph = GraphKnowledgeBase(base_path)
+
+        self.assertEqual(graph.edges[0].weight, 0.0)
+
+    def test_graph_raises_when_files_are_missing(self):
+        with TemporaryDirectory() as tmpdir:
+            base_path = Path(tmpdir)
+            (base_path / "nodes.json").write_text("[]", encoding="utf-8")
+
+            with self.assertRaises(FileNotFoundError):
+                GraphKnowledgeBase(base_path)
+
+    def test_graph_rejects_invalid_records(self):
+        cases = [
+            (
+                "blank node id",
+                {
+                    "nodes.json": [
+                        {"id": " ", "type": "segment", "label": "Blank"}
+                    ],
+                    "edges.json": [],
+                    "facts.json": [],
+                },
+            ),
+            (
+                "duplicate node id",
+                {
+                    "nodes.json": [
+                        {"id": "node:a", "type": "segment", "label": "A"},
+                        {"id": "node:a", "type": "category", "label": "Duplicate"},
+                    ],
+                    "edges.json": [],
+                    "facts.json": [],
+                },
+            ),
+            (
+                "dangling edge endpoint",
+                {
+                    "nodes.json": [
+                        {"id": "node:a", "type": "segment", "label": "A"},
+                        {"id": "node:b", "type": "category", "label": "B"},
+                    ],
+                    "edges.json": [
+                        {
+                            "source": "node:a",
+                            "target": "node:missing",
+                            "relation": "links_to",
+                        }
+                    ],
+                    "facts.json": [],
+                },
+            ),
+            (
+                "malformed fact",
+                {
+                    "nodes.json": [
+                        {"id": "node:a", "type": "segment", "label": "A"}
+                    ],
+                    "edges.json": [],
+                    "facts.json": [
+                        {
+                            "id": "fact:a",
+                            "node_id": " ",
+                            "relation": "summary",
+                            "statement": "Broken",
+                        }
+                    ],
+                },
+            ),
+        ]
+
+        for name, payloads in cases:
+            with self.subTest(name=name):
+                with TemporaryDirectory() as tmpdir:
+                    base_path = Path(tmpdir)
+                    for filename, payload in payloads.items():
+                        (base_path / filename).write_text(json.dumps(payload), encoding="utf-8")
+
+                    with self.assertRaises(ValueError):
+                        GraphKnowledgeBase(base_path)
+
+    def test_seed_graph_uses_all_declared_nodes(self):
+        graph = GraphKnowledgeBase("app/data/knowledge_graph")
+        referenced_nodes = {edge.source for edge in graph.edges} | {edge.target for edge in graph.edges} | {
+            fact.node_id for fact in graph.facts
+        }
+
+        self.assertEqual(set(graph.nodes), referenced_nodes)
