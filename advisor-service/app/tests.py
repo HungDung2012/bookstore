@@ -13,6 +13,8 @@ from app.services.behavior_dataset import BehaviorDatasetSchema
 from app.services.behavior_model import BehaviorModelService
 from app.services.graph_kb import GraphEdge, GraphFact, GraphKnowledgeBase, GraphNode
 from app.services.graph_retriever import GraphRetriever
+from app.services.knowledge_base import KnowledgeBaseService
+from app.services.text_retriever import TextRetriever
 
 
 class AdvisorBaselineTests(TestCase):
@@ -595,3 +597,30 @@ class GraphRetrieverTests(TestCase):
                 for path in result["paths"]
             )
         )
+
+
+class TextRetrieverTests(TestCase):
+    def setUp(self):
+        self.retriever = TextRetriever(KnowledgeBaseService("app/data/knowledge_base"))
+
+    def test_text_retriever_prefers_segment_advice_for_tech_reader_questions(self):
+        docs = self.retriever.search(
+            "What books should a tech reader buy?",
+            behavior_segment="tech_reader",
+            top_k=3,
+        )
+
+        self.assertGreaterEqual(len(docs), 1)
+        self.assertEqual(docs[0]["id"], "segment_tech_reader")
+        self.assertEqual(docs[0]["target_segment"], "tech_reader")
+
+    def test_text_retriever_prefers_shipping_faq_for_shipping_questions(self):
+        docs = self.retriever.search(
+            "How do shipping updates work for orders?",
+            behavior_segment="casual_buyer",
+            top_k=3,
+        )
+
+        self.assertGreaterEqual(len(docs), 1)
+        self.assertEqual(docs[0]["id"], "faq_shipping_policy")
+        self.assertEqual(docs[0]["doc_type"], "faq")
