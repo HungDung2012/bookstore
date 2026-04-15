@@ -3,7 +3,7 @@ import os
 from decimal import Decimal
 
 import requests
-from django.http import HttpResponseForbidden, JsonResponse
+from django.http import HttpResponseForbidden, HttpResponseNotFound, JsonResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.csrf import csrf_exempt
 
@@ -26,6 +26,12 @@ NOTIFICATION_SERVICE_URL = _service_url("NOTIFICATION_SERVICE_URL", "notificatio
 ADVISOR_SERVICE_URL = _service_url("ADVISOR_SERVICE_URL", "advisor-service:8000")
 SHIPPING_SERVICE_URL = _service_url("SHIPPING_SERVICE_URL", "shipping-service:8000")
 SHIPPING_STATUS_OPTIONS = ["pending", "packed", "shipping", "delivered"]
+SHIPPING_STATUS_TRANSITIONS = {
+    "pending": {"packed"},
+    "packed": {"shipping"},
+    "shipping": {"delivered"},
+    "delivered": set(),
+}
 
 
 def _dashboard_path_for_role(role):
@@ -104,14 +110,103 @@ def _sync_order_status_for_shipping(order_id, shipment_status):
     if not order_status:
         return
 
+    return requests.put(
+        f"{ORDER_SERVICE_URL}/orders/{order_id}/status/",
+        json={"status": order_status},
+        timeout=5,
+    )
+
+
+def _load_order(order_id):
     try:
-        requests.put(
-            f"{ORDER_SERVICE_URL}/orders/{order_id}/status/",
-            json={"status": order_status},
+        response = requests.get(f"{ORDER_SERVICE_URL}/orders/{order_id}/", timeout=5)
+    except requests.exceptions.RequestException:
+        return None, None
+
+    if response.status_code != 200:
+        return None, response
+
+    try:
+        return response.json(), response
+    except ValueError:
+        return None, response
+
+
+def _can_transition_shipment(current_status, next_status):
+    return next_status == current_status or next_status in SHIPPING_STATUS_TRANSITIONS.get(current_status, set())
+
+
+def _order_ready_for_shipment_status(order_status, current_shipment_status, next_shipment_status):
+    required_status = {
+        ("packed", "shipping"): "paid",
+        ("shipping", "delivered"): "shipping",
+    }.get((current_shipment_status, next_shipment_status))
+    if required_status is None:
+        return True
+    return order_status == required_status
+
+
+def _rollback_shipment_status(shipment_id, previous_status):
+    try:
+        return requests.patch(
+            f"{SHIPPING_SERVICE_URL}/shipping/{shipment_id}/",
+            json={"status": previous_status},
             timeout=5,
         )
     except requests.exceptions.RequestException:
-        pass
+        return None
+
+
+def _create_shipping_error_context(user, error):
+    try:
+        order_response = requests.get(f"{ORDER_SERVICE_URL}/orders/", timeout=5)
+        orders = order_response.json() if order_response.status_code == 200 else []
+    except requests.exceptions.RequestException:
+        orders = []
+        if error is None:
+            error = "Order service unavailable."
+
+    try:
+        shipment_response = requests.get(f"{SHIPPING_SERVICE_URL}/shipping/", timeout=5)
+        shipments = shipment_response.json() if shipment_response.status_code == 200 else []
+    except requests.exceptions.RequestException:
+        shipments = []
+        if error is None:
+            error = "Shipping service unavailable."
+
+    shipment_by_order_id = {shipment["order_id"]: shipment for shipment in shipments if "order_id" in shipment}
+    managed_orders = []
+    for order in orders:
+        if order.get("status") == "cancelled":
+            continue
+        order["shipment"] = shipment_by_order_id.get(order.get("id"))
+        order["can_create_shipment"] = order.get("status") == "paid" and not order["shipment"]
+        managed_orders.append(order)
+
+    return {
+        "user": user,
+        "orders": managed_orders,
+        "shipments": shipments,
+        "error": error,
+    }
+
+
+def _render_staff_shipping_error(request, user, error):
+    return render(request, "staff_shipping.html", _create_shipping_error_context(user, error))
+
+
+def _render_shipping_detail(request, user, order, shipment, error):
+    return render(
+        request,
+        "shipping_detail.html",
+        {
+            "user": user,
+            "order": order,
+            "shipment": shipment,
+            "shipping_status_options": SHIPPING_STATUS_OPTIONS,
+            "error": error,
+        },
+    )
 
 
 def health_check(request):
@@ -727,6 +822,26 @@ def staff_shipping_view(request):
         except (TypeError, ValueError):
             error = "A valid order is required to create a shipment."
         else:
+            order, order_response = _load_order(order_id)
+            if order is None:
+                if order_response and order_response.status_code == 404:
+                    error = "Order not found."
+                else:
+                    error = "Order service could not verify this order."
+                return _render_staff_shipping_error(request, user, error)
+
+            if order.get("status") == "cancelled":
+                error = "Cancelled orders cannot receive shipments."
+                return _render_staff_shipping_error(request, user, error)
+
+            if order.get("status") != "paid":
+                error = "Only paid orders can be moved into shipping."
+                return _render_staff_shipping_error(request, user, error)
+
+            existing_shipment = _shipping_for_order(order_id)
+            if existing_shipment:
+                return redirect(f"/shipping/{order_id}/")
+
             try:
                 response = requests.post(
                     f"{SHIPPING_SERVICE_URL}/shipping/",
@@ -738,42 +853,7 @@ def staff_shipping_view(request):
                 error = _upstream_error(response, "Shipping service rejected shipment creation.")
             except requests.exceptions.RequestException as exc:
                 error = f"Shipping service unavailable: {exc}"
-
-    try:
-        order_response = requests.get(f"{ORDER_SERVICE_URL}/orders/", timeout=5)
-        orders = order_response.json() if order_response.status_code == 200 else []
-    except requests.exceptions.RequestException:
-        orders = []
-        if error is None:
-            error = "Order service unavailable."
-
-    try:
-        shipment_response = requests.get(f"{SHIPPING_SERVICE_URL}/shipping/", timeout=5)
-        shipments = shipment_response.json() if shipment_response.status_code == 200 else []
-    except requests.exceptions.RequestException:
-        shipments = []
-        if error is None:
-            error = "Shipping service unavailable."
-
-    shipment_by_order_id = {shipment["order_id"]: shipment for shipment in shipments if "order_id" in shipment}
-    managed_orders = []
-    for order in orders:
-        if order.get("status") == "cancelled":
-            continue
-        order["shipment"] = shipment_by_order_id.get(order.get("id"))
-        order["can_create_shipment"] = order.get("status") in {"paid", "shipping", "delivered"} and not order["shipment"]
-        managed_orders.append(order)
-
-    return render(
-        request,
-        "staff_shipping.html",
-        {
-            "user": user,
-            "orders": managed_orders,
-            "shipments": shipments,
-            "error": error,
-        },
-    )
+    return render(request, "staff_shipping.html", _create_shipping_error_context(user, error))
 
 
 @csrf_exempt
@@ -785,15 +865,17 @@ def shipping_detail(request, order_id):
         return redirect(_dashboard_path_for_role(user.get("role")))
 
     error = None
-    try:
-        order_response = requests.get(f"{ORDER_SERVICE_URL}/orders/{order_id}/", timeout=5)
-        order = order_response.json() if order_response.status_code == 200 else {}
-    except requests.exceptions.RequestException as exc:
-        order = {}
-        error = f"Order service unavailable: {exc}"
+    order, order_response = _load_order(order_id)
+
+    if user.get("role") == "customer" and order is None:
+        return HttpResponseNotFound("Shipment not found.")
 
     if order and user.get("role") == "customer" and order.get("user_id") != user["id"]:
         return HttpResponseForbidden("You cannot access another user's shipment.")
+
+    if order is None:
+        error = "Order service unavailable."
+        order = {}
 
     shipment = _shipping_for_order(order_id)
 
@@ -801,7 +883,14 @@ def shipping_detail(request, order_id):
         next_status = request.POST.get("status")
         if next_status not in SHIPPING_STATUS_OPTIONS:
             error = "Select a valid shipping status."
+        elif not _can_transition_shipment(shipment["status"], next_status):
+            error = "Invalid shipping status transition."
+        elif not _order_ready_for_shipment_status(order.get("status"), shipment["status"], next_status):
+            error = "Order is not ready for this shipping update."
+        elif next_status == shipment["status"]:
+            return redirect(f"/shipping/{order_id}/")
         else:
+            previous_status = shipment["status"]
             try:
                 response = requests.patch(
                     f"{SHIPPING_SERVICE_URL}/shipping/{shipment['id']}/",
@@ -809,24 +898,24 @@ def shipping_detail(request, order_id):
                     timeout=5,
                 )
                 if response.status_code == 200:
-                    _sync_order_status_for_shipping(order_id, next_status)
-                    return redirect(f"/shipping/{order_id}/")
-                error = _upstream_error(response, "Shipping service rejected the status update.")
+                    order_sync_response = _sync_order_status_for_shipping(order_id, next_status)
+                    if order_sync_response is None:
+                        return redirect(f"/shipping/{order_id}/")
+                    if order_sync_response.status_code != 200:
+                        rollback_response = _rollback_shipment_status(shipment["id"], previous_status)
+                        if rollback_response is not None and rollback_response.status_code == 200:
+                            error = "Order status sync failed. Shipment change was rolled back."
+                        else:
+                            error = "Order status sync failed and shipment rollback may be required."
+                    else:
+                        return redirect(f"/shipping/{order_id}/")
+                else:
+                    error = _upstream_error(response, "Shipping service rejected the status update.")
             except requests.exceptions.RequestException as exc:
                 error = f"Shipping service unavailable: {exc}"
             shipment = _shipping_for_order(order_id)
 
-    return render(
-        request,
-        "shipping_detail.html",
-        {
-            "user": user,
-            "order": order,
-            "shipment": shipment,
-            "shipping_status_options": SHIPPING_STATUS_OPTIONS,
-            "error": error,
-        },
-    )
+    return _render_shipping_detail(request, user, order, shipment, error)
 
 
 @csrf_exempt

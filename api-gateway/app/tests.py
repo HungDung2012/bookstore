@@ -510,3 +510,155 @@ class GatewayBookDetailTests(TestCase):
         self.assertContains(response, "45 in stock")
         self.assertContains(response, "Science Fiction")
         self.assertContains(response, "Del Rey")
+
+
+class GatewayShippingWorkflowTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+
+    def _set_user_session(self, user):
+        session = self.client.session
+        session["token"] = "demo-token"
+        session["user"] = user
+        session.save()
+        self.client.cookies[settings.SESSION_COOKIE_NAME] = session.session_key
+
+    @patch("app.views.requests.get")
+    def test_customer_shipping_detail_fails_closed_when_order_cannot_be_loaded(self, get_mock):
+        self._set_user_session({"id": 3, "username": "alice", "role": "customer"})
+
+        order_response = Mock(status_code=404)
+        order_response.json.return_value = {"error": "Not found"}
+        get_mock.return_value = order_response
+
+        response = self.client.get("/shipping/44/", secure=True)
+
+        self.assertEqual(response.status_code, 404)
+        get_mock.assert_called_once_with("http://order-service:8000/orders/44/", timeout=5)
+
+    @patch("app.views.requests.post")
+    @patch("app.views.requests.get")
+    def test_staff_shipping_creation_rejects_nonexistent_order(self, get_mock, post_mock):
+        self._set_user_session({"id": 2, "username": "staff", "role": "staff"})
+
+        def fake_get(url, timeout=5, params=None):
+            response = Mock()
+            if url == "http://order-service:8000/orders/55/":
+                response.status_code = 404
+                response.json.return_value = {"error": "Not found"}
+                return response
+            if url == "http://order-service:8000/orders/":
+                response.status_code = 200
+                response.json.return_value = []
+                return response
+            if url == "http://shipping-service:8000/shipping/":
+                response.status_code = 200
+                response.json.return_value = []
+                return response
+            raise AssertionError(f"Unexpected URL {url}")
+
+        get_mock.side_effect = fake_get
+
+        response = self.client.post("/staff/shipping/", {"order_id": "55"}, secure=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Order not found.")
+        post_mock.assert_not_called()
+
+    @patch("app.views.requests.post")
+    @patch("app.views.requests.get")
+    def test_staff_shipping_creation_rejects_order_without_paid_status(self, get_mock, post_mock):
+        self._set_user_session({"id": 2, "username": "staff", "role": "staff"})
+
+        def fake_get(url, timeout=5, params=None):
+            response = Mock()
+            if url == "http://order-service:8000/orders/56/":
+                response.status_code = 200
+                response.json.return_value = {"id": 56, "status": "confirmed"}
+                return response
+            if url == "http://order-service:8000/orders/":
+                response.status_code = 200
+                response.json.return_value = [{"id": 56, "status": "confirmed", "shipping_name": "A", "shipping_phone": "1", "shipping_address": "X", "total_amount": "10.00"}]
+                return response
+            if url == "http://shipping-service:8000/shipping/":
+                response.status_code = 200
+                response.json.return_value = []
+                return response
+            raise AssertionError(f"Unexpected URL {url}")
+
+        get_mock.side_effect = fake_get
+
+        response = self.client.post("/staff/shipping/", {"order_id": "56"}, secure=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Only paid orders can be moved into shipping.")
+        post_mock.assert_not_called()
+
+    @patch("app.views.requests.put")
+    @patch("app.views.requests.patch")
+    @patch("app.views.requests.get")
+    def test_staff_shipping_update_rolls_back_when_order_sync_fails(self, get_mock, patch_mock, put_mock):
+        self._set_user_session({"id": 2, "username": "staff", "role": "staff"})
+
+        def fake_get(url, timeout=5, params=None):
+            response = Mock()
+            if url == "http://order-service:8000/orders/77/":
+                response.status_code = 200
+                response.json.return_value = {"id": 77, "status": "paid", "shipping_name": "A", "shipping_phone": "1", "shipping_address": "X", "total_amount": "10.00"}
+                return response
+            if url == "http://shipping-service:8000/shipping/" and params == {"order_id": 77}:
+                response.status_code = 200
+                response.json.return_value = [{"id": 8, "order_id": 77, "status": "packed", "tracking_code": "SHP-000008"}]
+                return response
+            raise AssertionError(f"Unexpected URL {url} params={params}")
+
+        get_mock.side_effect = fake_get
+        patch_mock.side_effect = [
+            Mock(status_code=200, json=Mock(return_value={"id": 8, "order_id": 77, "status": "shipping", "tracking_code": "SHP-000008"})),
+            Mock(status_code=200, json=Mock(return_value={"id": 8, "order_id": 77, "status": "packed", "tracking_code": "SHP-000008"})),
+        ]
+        put_mock.return_value = Mock(status_code=400, json=Mock(return_value={"error": "Cannot change from 'paid' to 'shipping'" }))
+
+        response = self.client.post("/shipping/77/", {"status": "shipping"}, secure=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Order status sync failed. Shipment change was rolled back.")
+        self.assertEqual(patch_mock.call_count, 2)
+        self.assertEqual(
+            patch_mock.call_args_list[0].args[0],
+            "http://shipping-service:8000/shipping/8/",
+        )
+        self.assertEqual(patch_mock.call_args_list[0].kwargs["json"], {"status": "shipping"})
+        self.assertEqual(patch_mock.call_args_list[1].kwargs["json"], {"status": "packed"})
+
+    @patch("app.views.requests.put")
+    @patch("app.views.requests.patch")
+    @patch("app.views.requests.get")
+    def test_staff_can_move_shipment_from_pending_to_packed_without_order_sync(self, get_mock, patch_mock, put_mock):
+        self._set_user_session({"id": 2, "username": "staff", "role": "staff"})
+
+        def fake_get(url, timeout=5, params=None):
+            response = Mock()
+            if url == "http://order-service:8000/orders/78/":
+                response.status_code = 200
+                response.json.return_value = {"id": 78, "status": "paid", "shipping_name": "A", "shipping_phone": "1", "shipping_address": "X", "total_amount": "10.00"}
+                return response
+            if url == "http://shipping-service:8000/shipping/" and params == {"order_id": 78}:
+                response.status_code = 200
+                response.json.return_value = [{"id": 9, "order_id": 78, "status": "pending", "tracking_code": "SHP-000009"}]
+                return response
+            raise AssertionError(f"Unexpected URL {url} params={params}")
+
+        get_mock.side_effect = fake_get
+        patch_mock.return_value = Mock(status_code=200, json=Mock(return_value={"id": 9, "order_id": 78, "status": "packed", "tracking_code": "SHP-000009"}))
+
+        response = self.client.post("/shipping/78/", {"status": "packed"}, secure=True)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, "/shipping/78/")
+        patch_mock.assert_called_once_with(
+            "http://shipping-service:8000/shipping/9/",
+            json={"status": "packed"},
+            timeout=5,
+        )
+        put_mock.assert_not_called()
