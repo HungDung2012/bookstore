@@ -15,5 +15,14 @@ class AdvisorChatView(APIView):
     def post(self, request):
         serializer = AdvisorChatSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        payload = AdvisorService().chat(**serializer.validated_data)
+        payload = AdvisorService().chat(
+            user_id=serializer.validated_data.get("user_id"),
+            question=serializer.validated_data["question"],
+        )
+        return Response(payload, status=status.HTTP_200_OK)
+
+
+class AdvisorProfileView(APIView):
+    def get(self, request, user_id):
+        payload = AdvisorService().profile(user_id=user_id)
         return Response(payload, status=status.HTTP_200_OK)
