@@ -575,6 +575,82 @@ class GatewayShippingWorkflowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "my_orders.html")
 
+    @patch("app.views.requests.get")
+    def test_staff_order_page_shows_orders_needing_processing(self, get_mock):
+        self._set_user_session({"id": 2, "username": "staff", "role": "staff"})
+
+        orders_response = Mock(status_code=200)
+        orders_response.json.return_value = [
+            {
+                "id": 91,
+                "user_id": 3,
+                "status": "pending",
+                "created_at": "2026-04-15T10:00:00Z",
+                "shipping_name": "Alice",
+                "shipping_phone": "0900000000",
+                "shipping_address": "123 Main St",
+                "items": [{"book_id": 1, "quantity": 1, "book_title": "Dune", "unit_price": "19.99"}],
+                "total_amount": "19.99",
+            },
+            {
+                "id": 92,
+                "user_id": 4,
+                "status": "confirmed",
+                "created_at": "2026-04-15T11:00:00Z",
+                "shipping_name": "Bob",
+                "shipping_phone": "0900000001",
+                "shipping_address": "456 Main St",
+                "items": [{"book_id": 2, "quantity": 2, "book_title": "Sapiens", "unit_price": "14.50"}],
+                "total_amount": "29.00",
+            },
+            {
+                "id": 93,
+                "user_id": 5,
+                "status": "shipping",
+                "created_at": "2026-04-15T12:00:00Z",
+                "shipping_name": "Carol",
+                "shipping_phone": "0900000002",
+                "shipping_address": "789 Main St",
+                "items": [{"book_id": 3, "quantity": 1, "book_title": "Neuromancer", "unit_price": "12.00"}],
+                "total_amount": "12.00",
+            },
+        ]
+        get_mock.return_value = orders_response
+
+        response = self.client.get("/staff/orders/", secure=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "staff_orders.html")
+        self.assertContains(response, "Orders To Process")
+        self.assertContains(response, "Order #91")
+        self.assertContains(response, "Order #92")
+        self.assertNotContains(response, "Order #93")
+        get_mock.assert_called_once_with("http://order-service:8000/orders/", timeout=5)
+
+    @patch("app.views.requests.put")
+    @patch("app.views.requests.get")
+    def test_staff_order_page_can_update_status_in_staff_workflow(self, get_mock, put_mock):
+        self._set_user_session({"id": 2, "username": "staff", "role": "staff"})
+
+        order_detail_response = Mock(status_code=200)
+        order_detail_response.json.return_value = {"id": 91, "status": "pending"}
+        get_mock.return_value = order_detail_response
+        put_mock.return_value = Mock(
+            status_code=200,
+            json=Mock(return_value={"id": 91, "status": "confirmed"}),
+        )
+
+        response = self.client.post("/staff/orders/", {"order_id": "91", "status": "confirmed"}, secure=True)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, "/staff/orders/")
+        put_mock.assert_called_once_with(
+            "http://order-service:8000/orders/91/status/",
+            json={"status": "confirmed"},
+            timeout=5,
+        )
+        get_mock.assert_called_once_with("http://order-service:8000/orders/91/", timeout=5)
+
     @patch("app.views.requests.post")
     @patch("app.views.requests.get")
     def test_staff_shipping_creation_rejects_nonexistent_order(self, get_mock, post_mock):

@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Staff Orders | Microstore{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Orders To Process</h1>
+    <p>Review active orders before they move into shipping.</p>
+</div>
+
+{% if error %}
+<div class="alert-error" style="margin-bottom:1rem;">
+    <i class="fa-solid fa-circle-exclamation"></i> {{ error }}
+</div>
+{% endif %}
+
+{% if orders %}
+<div style="display:grid; gap:1rem;">
+    {% for order in orders %}
+    <div class="glass-card">
+        <div style="display:flex; justify-content:space-between; gap:1rem; align-items:flex-start; flex-wrap:wrap;">
+            <div>
+                <h3 class="card-title">Order #{{ order.id }}</h3>
+                <p class="card-subtitle">{{ order.shipping_name }} • {{ order.shipping_phone }}</p>
+            </div>
+            <span class="stock-badge" style="{% if order.status == 'confirmed' %}background:rgba(16,185,129,0.1); color:#34d399; border-color:rgba(16,185,129,0.2);{% else %}background:rgba(234,179,8,0.1); color:#facc15; border-color:rgba(234,179,8,0.2);{% endif %}">
+                {{ order.status|upper }}
+            </span>
+        </div>
+
+        <p class="card-subtitle" style="margin:0.75rem 0;">{{ order.shipping_address }}</p>
+
+        <div style="display:flex; justify-content:space-between; gap:1rem; align-items:center; flex-wrap:wrap;">
+            <div>
+                <p style="color:var(--text-muted); margin-bottom:0.35rem;">{{ order.items|length }} item(s)</p>
+                <span class="price-tag">${{ order.total_amount }}</span>
+            </div>
+            <form method="post" style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
+                {% csrf_token %}
+                <input type="hidden" name="order_id" value="{{ order.id }}">
+                <select name="status" required style="min-width:180px;">
+                    <option value="">Next status...</option>
+                    {% for status in order.next_statuses %}
+                    <option value="{{ status }}">{{ status|upper }}</option>
+                    {% endfor %}
+                </select>
+                <button type="submit" class="action-btn">
+                    <i class="fa-solid fa-arrows-rotate"></i> Update status
+                </button>
+            </form>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+    <i class="fa-solid fa-box-open"></i>
+    <h3>No orders need processing</h3>
+    <p>Pending and confirmed orders will appear here for staff action.</p>
+</div>
+{% endif %}
+{% endblock %}

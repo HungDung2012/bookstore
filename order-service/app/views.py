@@ -22,6 +22,14 @@ CART_SERVICE_URL = _service_url("CART_SERVICE_URL", "cart-service:8000")
 BOOK_SERVICE_URL = _service_url("BOOK_SERVICE_URL", "book-service:8000")
 INVENTORY_SERVICE_URL = _service_url("INVENTORY_SERVICE_URL", "inventory-service:8000")
 PAYMENT_SERVICE_URL = _service_url("PAYMENT_SERVICE_URL", "payment-service:8000")
+ORDER_STATUS_TRANSITIONS = {
+    "pending": ["confirmed", "paid", "cancelled"],
+    "confirmed": ["paid", "cancelled"],
+    "paid": ["shipping", "cancelled"],
+    "shipping": ["delivered"],
+    "delivered": [],
+    "cancelled": [],
+}
 
 
 def _order_items_payload(order):
@@ -133,15 +141,7 @@ class UpdateOrderStatusView(APIView):
     def put(self, request, pk):
         order = get_object_or_404(Order, pk=pk)
         new_status = request.data.get("status")
-        valid_transitions = {
-            "pending": ["confirmed", "paid", "cancelled"],
-            "confirmed": ["paid", "cancelled"],
-            "paid": ["shipping", "cancelled"],
-            "shipping": ["delivered"],
-            "delivered": [],
-            "cancelled": [],
-        }
-        allowed = valid_transitions.get(order.status, [])
+        allowed = ORDER_STATUS_TRANSITIONS.get(order.status, [])
         if new_status not in allowed:
             return Response(
                 {"error": f"Cannot change from '{order.status}' to '{new_status}'. Allowed: {allowed}"},

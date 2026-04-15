@@ -25,6 +25,10 @@ REVIEW_SERVICE_URL = _service_url("REVIEW_SERVICE_URL", "review-service:8000")
 NOTIFICATION_SERVICE_URL = _service_url("NOTIFICATION_SERVICE_URL", "notification-service:8000")
 ADVISOR_SERVICE_URL = _service_url("ADVISOR_SERVICE_URL", "advisor-service:8000")
 SHIPPING_SERVICE_URL = _service_url("SHIPPING_SERVICE_URL", "shipping-service:8000")
+STAFF_ORDER_STATUS_TRANSITIONS = {
+    "pending": ["confirmed", "cancelled"],
+    "confirmed": ["paid", "cancelled"],
+}
 SHIPPING_STATUS_OPTIONS = ["pending", "packed", "shipping", "delivered"]
 SHIPPING_STATUS_TRANSITIONS = {
     "pending": {"packed"},
@@ -187,6 +191,30 @@ def _create_shipping_error_context(user, error):
         "user": user,
         "orders": managed_orders,
         "shipments": shipments,
+        "error": error,
+    }
+
+
+def _create_staff_orders_context(user, error=None):
+    try:
+        response = requests.get(f"{ORDER_SERVICE_URL}/orders/", timeout=5)
+        orders = response.json() if response.status_code == 200 else []
+    except requests.exceptions.RequestException:
+        orders = []
+        if error is None:
+            error = "Order service unavailable."
+
+    managed_orders = []
+    for order in orders:
+        next_statuses = STAFF_ORDER_STATUS_TRANSITIONS.get(order.get("status"))
+        if not next_statuses:
+            continue
+        order["next_statuses"] = next_statuses
+        managed_orders.append(order)
+
+    return {
+        "user": user,
+        "orders": managed_orders,
         "error": error,
     }
 
@@ -805,6 +833,48 @@ def order_detail(request, pk):
         return HttpResponseForbidden("You cannot access another user's order.")
 
     return render(request, "order_detail.html", {"order": order, "user": user})
+
+
+@csrf_exempt
+def staff_orders_view(request):
+    user, _ = _get_user(request)
+    if not user:
+        return redirect("/login/")
+    if user.get("role") != "staff":
+        return redirect(_dashboard_path_for_role(user.get("role")))
+
+    error = None
+    if request.method == "POST":
+        try:
+            order_id = int(request.POST.get("order_id", ""))
+        except (TypeError, ValueError):
+            error = "A valid order is required."
+        else:
+            try:
+                order, order_response = _load_order(order_id)
+                if order is None:
+                    if order_response and order_response.status_code == 404:
+                        error = "Order not found."
+                    else:
+                        error = "Order service could not verify this order."
+                else:
+                    allowed_statuses = STAFF_ORDER_STATUS_TRANSITIONS.get(order.get("status"), [])
+                    next_status = request.POST.get("status")
+                    if next_status not in allowed_statuses:
+                        error = "Select a valid staff order status."
+                    else:
+                        response = requests.put(
+                            f"{ORDER_SERVICE_URL}/orders/{order_id}/status/",
+                            json={"status": next_status},
+                            timeout=5,
+                        )
+                        if response.status_code == 200:
+                            return redirect("/staff/orders/")
+                        error = _upstream_error(response, "Order service rejected the status update.")
+            except requests.exceptions.RequestException as exc:
+                error = f"Order service unavailable: {exc}"
+
+    return render(request, "staff_orders.html", _create_staff_orders_context(user, error))
 
 
 @csrf_exempt

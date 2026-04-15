@@ -84,6 +84,31 @@ class OrderStatusTests(TestCase):
         )
 
     @patch("app.views.requests.post")
+    def test_pending_order_can_move_to_confirmed_without_inventory_sync(self, mock_post):
+        order = Order.objects.create(
+            user_id=1,
+            status="pending",
+            total_amount="20.00",
+            shipping_name="Alice",
+            shipping_phone="0123",
+            shipping_address="123 Street",
+        )
+        OrderItem.objects.create(
+            order=order,
+            book_id=9,
+            book_title="Book",
+            quantity=2,
+            unit_price="10.00",
+        )
+
+        response = self.client.put(f"/orders/{order.id}/status/", {"status": "confirmed"}, format="json")
+
+        self.assertEqual(response.status_code, 200)
+        order.refresh_from_db()
+        self.assertEqual(order.status, "confirmed")
+        mock_post.assert_not_called()
+
+    @patch("app.views.requests.post")
     def test_cancelling_confirmed_order_restocks_inventory(self, mock_post):
         mock_post.return_value = Mock(status_code=200)
 
