@@ -11,6 +11,7 @@ from rest_framework.test import APIClient
 from app.management.commands import train_behavior_model as train_behavior_model_module
 from app.services.behavior_dataset import BehaviorDatasetSchema
 from app.services.behavior_model import BehaviorModelService
+from app.services.graph_kb import GraphEdge, GraphKnowledgeBase, GraphNode
 
 
 class AdvisorBaselineTests(TestCase):
@@ -339,3 +340,26 @@ class BehaviorModelTrainingTests(TestCase):
         self.assertFalse(Path(metadata["model_path"]).is_absolute())
         self.assertFalse(Path(metadata["features_path"]).is_absolute())
         self.assertFalse(Path(metadata["labels_path"]).is_absolute())
+
+
+class GraphKnowledgeBaseTests(TestCase):
+    def test_graph_loads_nodes_edges_adjacency_and_facts(self):
+        graph = GraphKnowledgeBase("app/data/knowledge_graph")
+
+        self.assertGreater(len(graph.nodes), 0)
+        self.assertGreater(len(graph.edges), 0)
+        self.assertGreater(len(graph.facts), 0)
+        self.assertIn("segment:tech_reader", graph.nodes)
+        self.assertIn("category:programming", graph.nodes)
+        self.assertIsInstance(graph.nodes["segment:tech_reader"], GraphNode)
+        self.assertIsInstance(graph.edges[0], GraphEdge)
+        self.assertIn("category:programming", graph.neighbors("segment:tech_reader"))
+
+        tech_reader_facts = graph.facts_for_node("segment:tech_reader")
+        self.assertTrue(tech_reader_facts)
+        self.assertTrue(all(fact.node_id == "segment:tech_reader" for fact in tech_reader_facts))
+        self.assertTrue(any("programming" in fact.statement.lower() for fact in tech_reader_facts))
+
+        adjacency = graph.edges_for_node("segment:tech_reader")
+        self.assertTrue(adjacency["outgoing"])
+        self.assertTrue(any(edge.target == "category:programming" for edge in adjacency["outgoing"]))

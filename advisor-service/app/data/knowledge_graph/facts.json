@@ -1,0 +1,83 @@
+[
+  {
+    "id": "fact-tech-reader-programming",
+    "node_id": "segment:tech_reader",
+    "relation": "prefers_category",
+    "statement": "Technology readers respond well to programming, software engineering, and data titles.",
+    "metadata": {
+      "confidence": "high"
+    }
+  },
+  {
+    "id": "fact-tech-reader-payment",
+    "node_id": "segment:tech_reader",
+    "relation": "checkout_expectation",
+    "statement": "Technology readers value a fast checkout flow and clear payment confirmation.",
+    "metadata": {
+      "confidence": "medium"
+    }
+  },
+  {
+    "id": "fact-literature-reader-shipping",
+    "node_id": "segment:literature_reader",
+    "relation": "fulfillment_expectation",
+    "statement": "Literature readers often want reliable shipping updates for print-heavy orders.",
+    "metadata": {
+      "confidence": "medium"
+    }
+  },
+  {
+    "id": "fact-family-reader-children",
+    "node_id": "segment:family_reader",
+    "relation": "prefers_category",
+    "statement": "Family readers commonly shop children's books, read-aloud titles, and classroom gifts.",
+    "metadata": {
+      "confidence": "high"
+    }
+  },
+  {
+    "id": "fact-bargain-hunter-cancellation",
+    "node_id": "segment:bargain_hunter",
+    "relation": "policy_check",
+    "statement": "Bargain hunters often compare shipping costs and cancellation flexibility before purchase.",
+    "metadata": {
+      "confidence": "high"
+    }
+  },
+  {
+    "id": "fact-casual-buyer-payment",
+    "node_id": "segment:casual_buyer",
+    "relation": "checkout_need",
+    "statement": "Casual buyers need simple payment steps and minimal friction to complete an order.",
+    "metadata": {
+      "confidence": "high"
+    }
+  },
+  {
+    "id": "fact-category-programming",
+    "node_id": "category:programming",
+    "relation": "topic_summary",
+    "statement": "Programming books support skill growth in Python, web development, systems design, and data workflows.",
+    "metadata": {
+      "confidence": "medium"
+    }
+  },
+  {
+    "id": "fact-service-shipping",
+    "node_id": "service:shipping",
+    "relation": "service_summary",
+    "statement": "Shipping guidance should explain delivery windows, tracking, and regional handling times.",
+    "metadata": {
+      "confidence": "medium"
+    }
+  },
+  {
+    "id": "fact-policy-cancellation",
+    "node_id": "policy:cancellation",
+    "relation": "policy_summary",
+    "statement": "Cancellation policy information should state timing, refund handling, and order status limits.",
+    "metadata": {
+      "confidence": "medium"
+    }
+  }
+]

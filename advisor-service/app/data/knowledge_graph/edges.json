@@ -1,0 +1,110 @@
+[
+  {
+    "source": "segment:tech_reader",
+    "target": "category:programming",
+    "relation": "prefers",
+    "weight": 0.95,
+    "metadata": {
+      "evidence": "transaction_history"
+    }
+  },
+  {
+    "source": "segment:tech_reader",
+    "target": "service:payment",
+    "relation": "needs_clear_checkout",
+    "weight": 0.7,
+    "metadata": {
+      "evidence": "purchase_flow"
+    }
+  },
+  {
+    "source": "segment:literature_reader",
+    "target": "category:literature",
+    "relation": "prefers",
+    "weight": 0.95,
+    "metadata": {
+      "evidence": "reading_history"
+    }
+  },
+  {
+    "source": "segment:literature_reader",
+    "target": "service:shipping",
+    "relation": "needs_reliable_delivery",
+    "weight": 0.6,
+    "metadata": {
+      "evidence": "fulfillment_feedback"
+    }
+  },
+  {
+    "source": "segment:family_reader",
+    "target": "category:children",
+    "relation": "prefers",
+    "weight": 0.92,
+    "metadata": {
+      "evidence": "family_basket_mix"
+    }
+  },
+  {
+    "source": "segment:family_reader",
+    "target": "policy:cancellation",
+    "relation": "needs_flexible_returns",
+    "weight": 0.66,
+    "metadata": {
+      "evidence": "support_requests"
+    }
+  },
+  {
+    "source": "segment:bargain_hunter",
+    "target": "service:shipping",
+    "relation": "optimizes_cost",
+    "weight": 0.88,
+    "metadata": {
+      "evidence": "promotion_responses"
+    }
+  },
+  {
+    "source": "segment:bargain_hunter",
+    "target": "policy:cancellation",
+    "relation": "checks_before_buying",
+    "weight": 0.74,
+    "metadata": {
+      "evidence": "cart_abandonment"
+    }
+  },
+  {
+    "source": "segment:casual_buyer",
+    "target": "service:payment",
+    "relation": "needs_simple_checkout",
+    "weight": 0.63,
+    "metadata": {
+      "evidence": "guest_orders"
+    }
+  },
+  {
+    "source": "category:programming",
+    "target": "service:payment",
+    "relation": "often_bought_with",
+    "weight": 0.4,
+    "metadata": {
+      "evidence": "bundle_analysis"
+    }
+  },
+  {
+    "source": "category:literature",
+    "target": "service:shipping",
+    "relation": "often_requires",
+    "weight": 0.5,
+    "metadata": {
+      "evidence": "delivery_expectations"
+    }
+  },
+  {
+    "source": "category:children",
+    "target": "policy:cancellation",
+    "relation": "benefits_from",
+    "weight": 0.55,
+    "metadata": {
+      "evidence": "gift_orders"
+    }
+  }
+]
