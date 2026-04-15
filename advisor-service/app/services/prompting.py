@@ -1,3 +1,35 @@
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class RetrievalContext:
+    documents: list | None = None
+    recommended_books: list | None = None
+    graph_facts: list | None = None
+    graph_paths: list | None = None
+    text_sources: list | None = None
+    context_blocks: list | None = None
+
+
+def _humanize_identifier(value):
+    if not value:
+        return ""
+    return str(value).split(":", 1)[-1].replace("_", " ")
+
+
+def _format_path_text(block):
+    nodes = block.get("nodes", [])
+    if nodes:
+        return " -> ".join(_humanize_identifier(node) for node in nodes if node)
+    return block.get("text", "") or block.get("title", "Graph path")
+
+
+def _pick_context_value(current, override):
+    if override is None:
+        return current
+    return override
+
+
 def _format_block(block):
     kind = block.get("kind", "context")
     title = block.get("title") or block.get("id") or "Context"
@@ -7,10 +39,13 @@ def _format_block(block):
     if kind == "graph_path":
         relations = " / ".join(block.get("relations", []))
         reason = block.get("reason", "")
-        extra = f" ({relations})" if relations else ""
+        path_text = _format_path_text(block)
+        extra = ""
+        if relations:
+            extra += f" ({relations})"
         if reason:
-            extra = f"{extra} - {reason}".strip()
-        return f"- Graph path: {title}: {text}{extra}"
+            extra += f" - {reason}"
+        return f"- Graph path: {path_text}{extra}"
     if kind == "text_source":
         return f"- Text source: {title}: {text}"
     return f"- {title}: {text}"
@@ -26,7 +61,27 @@ def build_chat_prompt(
     graph_paths=None,
     text_sources=None,
     context_blocks=None,
+    retrieval_context=None,
 ):
+    if retrieval_context is not None:
+        if hasattr(retrieval_context, "get"):
+            documents = _pick_context_value(documents, retrieval_context.get("documents"))
+            recommended_books = _pick_context_value(recommended_books, retrieval_context.get("recommended_books"))
+            graph_facts = _pick_context_value(graph_facts, retrieval_context.get("graph_facts"))
+            graph_paths = _pick_context_value(graph_paths, retrieval_context.get("graph_paths"))
+            text_sources = _pick_context_value(text_sources, retrieval_context.get("text_sources"))
+            context_blocks = _pick_context_value(context_blocks, retrieval_context.get("context_blocks"))
+        else:
+            documents = _pick_context_value(documents, getattr(retrieval_context, "documents", None))
+            recommended_books = _pick_context_value(
+                recommended_books,
+                getattr(retrieval_context, "recommended_books", None),
+            )
+            graph_facts = _pick_context_value(graph_facts, getattr(retrieval_context, "graph_facts", None))
+            graph_paths = _pick_context_value(graph_paths, getattr(retrieval_context, "graph_paths", None))
+            text_sources = _pick_context_value(text_sources, getattr(retrieval_context, "text_sources", None))
+            context_blocks = _pick_context_value(context_blocks, getattr(retrieval_context, "context_blocks", None))
+
     documents = documents or []
     recommended_books = recommended_books or []
     if text_sources is None:
@@ -48,8 +103,8 @@ def build_chat_prompt(
                 "kind": "graph_path",
                 "nodes": list(path.get("nodes", [])),
                 "relations": list(path.get("relations", [])),
-                "title": "Graph path",
-                "text": " -> ".join(path.get("nodes", [])),
+                "title": _format_path_text(path),
+                "text": _format_path_text(path),
                 "reason": path.get("reason", ""),
             }
             for path in (graph_paths or [])

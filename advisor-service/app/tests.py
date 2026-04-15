@@ -714,8 +714,69 @@ class HybridRAGPipelineTests(TestCase):
         self.assertTrue(any(fact["statement"] in context_text for fact in result["graph_facts"]))
         self.assertTrue(any(source["text"] in context_text for source in result["text_sources"]))
 
+    def test_pipeline_deduplicates_overlapping_evidence_and_orders_by_score(self):
+        class FakeGraphRetriever:
+            def search(self, question, behavior_segment=None, top_k=3):
+                return {
+                    "facts": [
+                        {
+                            "id": "fact-duplicate",
+                            "node_id": "service:shipping",
+                            "relation": "service_summary",
+                            "statement": "Shipping guidance should explain delivery windows, tracking, and regional handling times.",
+                            "score": 2.0,
+                            "reasons": ["graph fact"],
+                        }
+                    ],
+                    "paths": [
+                        {
+                            "nodes": ["segment:tech_reader", "service:shipping"],
+                            "relations": ["relevant_to"],
+                            "score": 4.0,
+                            "reason": "graph path",
+                        }
+                    ],
+                }
+
+        class FakeTextRetriever:
+            def search(self, question, behavior_segment=None, top_k=3):
+                return [
+                    {
+                        "id": "doc-duplicate",
+                        "title": "Shipping guidance",
+                        "doc_type": "faq",
+                        "target_segment": "all",
+                        "text": "Shipping guidance should explain delivery windows, tracking, and regional handling times.",
+                        "score": 1.5,
+                        "reasons": ["text source"],
+                    },
+                    {
+                        "id": "doc-higher",
+                        "title": "Tech reader advice",
+                        "doc_type": "segment_advice",
+                        "target_segment": "tech_reader",
+                        "text": "Technology readers usually prefer programming and data books.",
+                        "score": 5.0,
+                        "reasons": ["text source"],
+                    },
+                ]
+
+        pipeline = HybridRAGPipeline(FakeGraphRetriever(), FakeTextRetriever())
+        result = pipeline.retrieve("Recommend books", behavior_segment="tech_reader", top_k=3)
+
+        self.assertEqual(len(result["context_blocks"]), 3)
+        self.assertEqual([block["score"] for block in result["context_blocks"]], [5.0, 4.0, 2.0])
+        self.assertEqual(result["context_blocks"][0]["kind"], "text_source")
+        self.assertEqual(result["context_blocks"][1]["kind"], "graph_path")
+        self.assertEqual(result["context_blocks"][2]["kind"], "graph_fact")
+        duplicate_text = "Shipping guidance should explain delivery windows, tracking, and regional handling times."
+        duplicate_blocks = [block for block in result["context_blocks"] if block.get("text") == duplicate_text]
+        self.assertEqual(len(duplicate_blocks), 1)
+        self.assertEqual(duplicate_blocks[0]["kind"], "graph_fact")
+
     def test_prompt_builder_accepts_hybrid_context_payload(self):
         from app.services.prompting import build_chat_prompt
+        from app.services.prompting import RetrievalContext
 
         result = self.pipeline.retrieve(
             question="Recommend books and explain shipping for a tech reader",
@@ -728,13 +789,17 @@ class HybridRAGPipelineTests(TestCase):
             behavior_segment="tech_reader",
             feature_summary="Predicted segment is tech_reader.",
             recommended_books=[{"title": "Clean Code", "price": "29.99"}],
-            graph_facts=result["graph_facts"],
-            graph_paths=result["graph_paths"],
-            text_sources=result["text_sources"],
-            context_blocks=result["context_blocks"],
+            retrieval_context=RetrievalContext(
+                graph_facts=result["graph_facts"],
+                graph_paths=result["graph_paths"],
+                text_sources=result["text_sources"],
+                context_blocks=result["context_blocks"],
+            ),
         )
 
         self.assertIn("Relevant context:", prompt)
         self.assertIn("Graph fact:", prompt)
         self.assertIn("Text source:", prompt)
         self.assertIn("Clean Code", prompt)
+        self.assertNotIn("Graph path: Graph path", prompt)
+        self.assertRegex(prompt, r"Graph path: [^\n]*tech reader[^\n]*-> [^\n]*")
