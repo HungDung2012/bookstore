@@ -8,6 +8,7 @@ from unittest.mock import patch
 from django.test import TestCase
 from rest_framework.test import APIClient
 
+from app.services.advisor import AdvisorService
 from app.management.commands import train_behavior_model as train_behavior_model_module
 from app.services.behavior_dataset import BehaviorDatasetSchema
 from app.services.behavior_model import BehaviorModelService
@@ -106,6 +107,80 @@ class AdvisorBaselineTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["behavior_segment"], "literature_reader")
         profile_mock.assert_called_once_with(user_id=4)
+
+
+class AdvisorServiceOrchestrationTests(TestCase):
+    def setUp(self):
+        self.service = AdvisorService()
+
+        class FakeClient:
+            def get_books(self):
+                return [
+                    {"id": 1, "title": "Clean Code", "category": 3, "price": "29.99"},
+                    {"id": 2, "title": "Novel Study", "category": 5, "price": "19.99"},
+                    {"id": 3, "title": "Kids Story", "category": 7, "price": "14.99"},
+                ]
+
+            def get_user(self, user_id):
+                return {"id": user_id, "name": "Test User"}
+
+            def get_orders(self, user_id):
+                return [
+                    {
+                        "id": 101,
+                        "total_amount": 58.0,
+                        "items": [{"book_id": 1, "quantity": 1}],
+                    }
+                ]
+
+            def get_reviews(self, user_id):
+                return [{"id": 201, "rating": 5, "comment": "Great technical books."}]
+
+            def get_cart(self, user_id):
+                return [{"book_id": 1, "quantity": 1}]
+
+        class FakeModelService:
+            def predict(self, features):
+                return {
+                    "behavior_segment": "tech_reader",
+                    "probabilities": {
+                        "tech_reader": 0.81,
+                        "casual_buyer": 0.11,
+                        "literature_reader": 0.08,
+                    },
+                }
+
+        self.service.client = FakeClient()
+        self.service.model_service = FakeModelService()
+        self.service._call_llm = lambda prompt: None
+
+    def test_chat_returns_behavior_segment_graph_facts_text_sources_and_probabilities(self):
+        result = self.service.chat(
+            user_id=1,
+            question="What books should I buy and how does shipping work?",
+        )
+
+        self.assertEqual(result["behavior_segment"], "tech_reader")
+        self.assertIn("tech_reader", result["probabilities"])
+        self.assertTrue(result["recommended_books"])
+        self.assertTrue(result["sources"])
+        self.assertTrue(result["graph_facts"])
+        self.assertTrue(result["graph_paths"])
+        self.assertIn("feature_summary", result)
+        self.assertIn("cart_items=1", result["feature_summary"])
+        self.assertTrue(any(book["title"] == "Clean Code" for book in result["recommended_books"]))
+        self.assertTrue(any(fact["statement"] for fact in result["graph_facts"]))
+        self.assertTrue(any(source["text"] for source in result["sources"]))
+
+    def test_profile_returns_enriched_summary_and_probabilities(self):
+        result = self.service.profile(user_id=1)
+
+        self.assertEqual(result["behavior_segment"], "tech_reader")
+        self.assertIn("probabilities", result)
+        self.assertIn("recommended_books", result)
+        self.assertIn("feature_summary", result)
+        self.assertIn("Top probabilities:", result["feature_summary"])
+        self.assertTrue(result["recommended_books"])
 
 
 class BehaviorDatasetSchemaTests(TestCase):

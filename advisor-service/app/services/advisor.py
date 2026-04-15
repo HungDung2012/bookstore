@@ -5,16 +5,23 @@ import requests
 from .behavior_model import BehaviorModelService
 from .clients import UpstreamClient
 from .features import build_behavior_features
+from .graph_kb import GraphKnowledgeBase
+from .graph_retriever import GraphRetriever
 from .knowledge_base import KnowledgeBaseService
+from .rag_pipeline import HybridRAGPipeline
 from .prompting import build_chat_prompt, build_fallback_answer
-from .retriever import RetrieverService
+from .text_retriever import TextRetriever
 
 
 class AdvisorService:
     def __init__(self):
         self.client = UpstreamClient()
         self.model_service = BehaviorModelService()
-        self.retriever = RetrieverService(KnowledgeBaseService("app/data/knowledge_base"))
+        self.text_kb = KnowledgeBaseService("app/data/knowledge_base")
+        self.graph_kb = GraphKnowledgeBase("app/data/knowledge_graph")
+        self.text_retriever = TextRetriever(self.text_kb)
+        self.graph_retriever = GraphRetriever(self.graph_kb)
+        self.rag_pipeline = HybridRAGPipeline(self.graph_retriever, self.text_retriever)
 
     def _pick_books(self, books, segment, limit=3):
         if segment == "tech_reader":
@@ -66,6 +73,24 @@ class AdvisorService:
         prediction = self.model_service.predict(features)
         return features, prediction
 
+    def _build_feature_summary(self, features, prediction):
+        behavior_segment = prediction.get("behavior_segment", "casual_buyer")
+        orders = features.get("order_count", 0)
+        reviews = features.get("review_count", 0)
+        cart_items = features.get("cart_item_count", 0)
+        summary = (
+            f"Predicted segment is {behavior_segment} from orders={orders}, "
+            f"reviews={reviews}, cart_items={cart_items}."
+        )
+
+        probabilities = prediction.get("probabilities") or {}
+        if probabilities:
+            ranked_probabilities = sorted(probabilities.items(), key=lambda item: (-item[1], item[0]))[:3]
+            top_signals = ", ".join(f"{label}={prob:.2f}" for label, prob in ranked_probabilities)
+            summary = f"{summary} Top probabilities: {top_signals}."
+
+        return summary
+
     def _profile_fallback_payload(self):
         return {
             "behavior_segment": "casual_buyer",
@@ -78,17 +103,15 @@ class AdvisorService:
         features, prediction = self._predict_behavior(profile, books, orders, reviews, cart_items)
         behavior_segment = prediction["behavior_segment"]
         recommended_books = self._pick_books(books, behavior_segment)
-        sources = self.retriever.search(question, target_segment=behavior_segment, top_k=3)
-        feature_summary = (
-            f"Predicted segment is {behavior_segment} from orders={features['order_count']}, "
-            f"reviews={features['review_count']}."
-        )
+        retrieval = self.rag_pipeline.retrieve(question, behavior_segment=behavior_segment, top_k=3)
+        sources = retrieval["text_sources"]
+        feature_summary = self._build_feature_summary(features, prediction)
         prompt = build_chat_prompt(
             question,
             behavior_segment,
             feature_summary,
-            sources,
-            recommended_books,
+            recommended_books=recommended_books,
+            retrieval_context=retrieval,
         )
 
         try:
@@ -103,8 +126,11 @@ class AdvisorService:
         return {
             "answer": answer,
             "behavior_segment": behavior_segment,
+            "probabilities": prediction.get("probabilities", {}),
             "recommended_books": recommended_books,
             "sources": sources,
+            "graph_facts": retrieval["graph_facts"],
+            "graph_paths": retrieval["graph_paths"],
             "feature_summary": feature_summary,
         }
 
@@ -118,10 +144,8 @@ class AdvisorService:
                 reviews,
                 cart_items,
             )
-            prediction["feature_summary"] = (
-                f"Predicted segment is {prediction['behavior_segment']} from "
-                f"{features['order_count']} orders and {features['review_count']} reviews."
-            )
+            prediction["feature_summary"] = self._build_feature_summary(features, prediction)
+            prediction["recommended_books"] = self._pick_books(books, prediction["behavior_segment"])
             return prediction
         except Exception:
             return self._profile_fallback_payload()
