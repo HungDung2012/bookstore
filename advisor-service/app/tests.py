@@ -4,6 +4,13 @@ from unittest.mock import patch
 from django.test import TestCase
 from rest_framework.test import APIClient
 
+from app.services.behavior_dataset import BehaviorDatasetSchema
+from app.services.features import (
+    encode_behavior_label,
+    export_behavior_dataset_metadata,
+    vectorize_behavior_features,
+)
+
 
 class AdvisorBaselineTests(TestCase):
     def setUp(self):
@@ -93,3 +100,45 @@ class AdvisorBaselineTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["behavior_segment"], "literature_reader")
         profile_mock.assert_called_once_with(user_id=4)
+
+
+class BehaviorDatasetSchemaTests(TestCase):
+    def test_schema_orders_features_and_labels_deterministically(self):
+        schema = BehaviorDatasetSchema.from_rows(
+            [
+                {"order_count": 1, "category_3_count": 2, "label": "tech_reader"},
+                {"order_count": 2, "publisher_9_count": 1, "label": "casual_buyer"},
+            ]
+        )
+
+        self.assertEqual(
+            schema.feature_names,
+            ["category_3_count", "order_count", "publisher_9_count"],
+        )
+        self.assertEqual(schema.labels, ["casual_buyer", "tech_reader"])
+        self.assertEqual(
+            schema.vectorize_features({"order_count": 4, "category_3_count": 7}),
+            [7.0, 4.0, 0.0],
+        )
+        self.assertEqual(schema.encode_label("tech_reader"), 1)
+
+    def test_feature_helpers_export_schema_metadata(self):
+        schema = BehaviorDatasetSchema(
+            feature_names=["category_3_count", "order_count"],
+            labels=["casual_buyer", "tech_reader"],
+        )
+
+        self.assertEqual(
+            vectorize_behavior_features(schema, {"order_count": 5}),
+            [0.0, 5.0],
+        )
+        self.assertEqual(encode_behavior_label(schema, "casual_buyer"), 0)
+        self.assertEqual(
+            export_behavior_dataset_metadata(schema),
+            {
+                "feature_names": ["category_3_count", "order_count"],
+                "labels": ["casual_buyer", "tech_reader"],
+                "feature_count": 2,
+                "label_count": 2,
+            },
+        )
