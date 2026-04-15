@@ -72,7 +72,12 @@ class OrderStatusTests(TestCase):
             unit_price="10.00",
         )
 
-        response = self.client.put(f"/orders/{order.id}/status/", {"status": "paid"}, format="json")
+        response = self.client.put(
+            f"/orders/{order.id}/status/",
+            {"status": "paid"},
+            format="json",
+            HTTP_X_INTERNAL_SERVICE_TOKEN="gateway-internal-token",
+        )
 
         self.assertEqual(response.status_code, 200)
         order.refresh_from_db()
@@ -101,20 +106,89 @@ class OrderStatusTests(TestCase):
             unit_price="10.00",
         )
 
-        response = self.client.put(f"/orders/{order.id}/status/", {"status": "confirmed"}, format="json")
+        response = self.client.put(
+            f"/orders/{order.id}/status/",
+            {"status": "confirmed"},
+            format="json",
+            HTTP_X_INTERNAL_SERVICE_TOKEN="gateway-internal-token",
+        )
 
         self.assertEqual(response.status_code, 200)
         order.refresh_from_db()
         self.assertEqual(order.status, "confirmed")
         mock_post.assert_not_called()
 
+    def test_status_update_rejects_requests_without_internal_service_token(self):
+        order = Order.objects.create(
+            user_id=1,
+            status="pending",
+            total_amount="20.00",
+            shipping_name="Alice",
+            shipping_phone="0123",
+            shipping_address="123 Street",
+        )
+
+        response = self.client.put(f"/orders/{order.id}/status/", {"status": "confirmed"}, format="json")
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.data["error"], "Forbidden")
+
+    @patch.dict("os.environ", {"ORDER_SERVICE_INTERNAL_TOKEN": "shared-secret"})
+    def test_status_update_accepts_requests_with_matching_internal_service_token(self):
+        order = Order.objects.create(
+            user_id=1,
+            status="pending",
+            total_amount="20.00",
+            shipping_name="Alice",
+            shipping_phone="0123",
+            shipping_address="123 Street",
+        )
+
+        response = self.client.put(
+            f"/orders/{order.id}/status/",
+            {"status": "confirmed"},
+            format="json",
+            HTTP_X_INTERNAL_SERVICE_TOKEN="shared-secret",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        order.refresh_from_db()
+        self.assertEqual(order.status, "confirmed")
+
     @patch("app.views.requests.post")
-    def test_cancelling_confirmed_order_restocks_inventory(self, mock_post):
+    def test_cancelling_confirmed_order_does_not_touch_inventory(self, mock_post):
         mock_post.return_value = Mock(status_code=200)
 
         order = Order.objects.create(
             user_id=1,
             status="confirmed",
+            total_amount="15.00",
+            shipping_name="Alice",
+            shipping_phone="0123",
+            shipping_address="123 Street",
+        )
+        OrderItem.objects.create(
+            order=order,
+            book_id=4,
+            book_title="Book",
+            quantity=1,
+            unit_price="15.00",
+        )
+
+        response = self.client.post(f"/orders/{order.id}/cancel/")
+
+        self.assertEqual(response.status_code, 200)
+        order.refresh_from_db()
+        self.assertEqual(order.status, "cancelled")
+        mock_post.assert_not_called()
+
+    @patch("app.views.requests.post")
+    def test_cancelling_paid_order_restocks_inventory(self, mock_post):
+        mock_post.return_value = Mock(status_code=200)
+
+        order = Order.objects.create(
+            user_id=1,
+            status="paid",
             total_amount="15.00",
             shipping_name="Alice",
             shipping_phone="0123",

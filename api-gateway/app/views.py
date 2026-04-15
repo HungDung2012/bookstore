@@ -109,6 +109,12 @@ def _shipping_for_order(order_id):
     return None
 
 
+def _order_service_internal_headers():
+    return {
+        "X-Internal-Service-Token": os.getenv("ORDER_SERVICE_INTERNAL_TOKEN", "gateway-internal-token"),
+    }
+
+
 def _sync_order_status_for_shipping(order_id, shipment_status):
     order_status = {"shipping": "shipping", "delivered": "delivered"}.get(shipment_status)
     if not order_status:
@@ -117,6 +123,7 @@ def _sync_order_status_for_shipping(order_id, shipment_status):
     return requests.put(
         f"{ORDER_SERVICE_URL}/orders/{order_id}/status/",
         json={"status": order_status},
+        headers=_order_service_internal_headers(),
         timeout=5,
     )
 
@@ -866,6 +873,7 @@ def staff_orders_view(request):
                         response = requests.put(
                             f"{ORDER_SERVICE_URL}/orders/{order_id}/status/",
                             json={"status": next_status},
+                            headers=_order_service_internal_headers(),
                             timeout=5,
                         )
                         if response.status_code == 200:

@@ -1,5 +1,6 @@
 import os
 from decimal import Decimal
+from hmac import compare_digest
 
 import requests
 from django.shortcuts import get_object_or_404
@@ -34,6 +35,16 @@ ORDER_STATUS_TRANSITIONS = {
 
 def _order_items_payload(order):
     return [{"book_id": item.book_id, "quantity": item.quantity} for item in order.items.all()]
+
+
+def _expected_internal_token():
+    return os.getenv("ORDER_SERVICE_INTERNAL_TOKEN", "gateway-internal-token")
+
+
+def _is_internal_status_update(request):
+    provided = request.headers.get("X-Internal-Service-Token", "")
+    expected = _expected_internal_token()
+    return bool(provided) and compare_digest(provided, expected)
 
 
 def _normalize_order_items(items):
@@ -76,14 +87,16 @@ def _normalize_order_items(items):
 
 
 def _sync_inventory_for_cancellation(order):
+    if order.status not in {"paid", "shipping"}:
+        return
+
     items = _order_items_payload(order)
     if not items:
         return
 
-    endpoint = "/inventory/release/" if order.status == "pending" else "/inventory/restock/"
     try:
         requests.post(
-            f"{INVENTORY_SERVICE_URL}{endpoint}",
+            f"{INVENTORY_SERVICE_URL}/inventory/restock/",
             json={"items": items},
             timeout=5,
         )
@@ -139,6 +152,9 @@ class CheckoutView(APIView):
 
 class UpdateOrderStatusView(APIView):
     def put(self, request, pk):
+        if not _is_internal_status_update(request):
+            return Response({"error": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
         order = get_object_or_404(Order, pk=pk)
         new_status = request.data.get("status")
         allowed = ORDER_STATUS_TRANSITIONS.get(order.status, [])

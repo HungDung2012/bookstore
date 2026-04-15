@@ -647,6 +647,7 @@ class GatewayShippingWorkflowTests(TestCase):
         put_mock.assert_called_once_with(
             "http://order-service:8000/orders/91/status/",
             json={"status": "confirmed"},
+            headers={"X-Internal-Service-Token": "gateway-internal-token"},
             timeout=5,
         )
         get_mock.assert_called_once_with("http://order-service:8000/orders/91/", timeout=5)
@@ -745,6 +746,10 @@ class GatewayShippingWorkflowTests(TestCase):
         )
         self.assertEqual(patch_mock.call_args_list[0].kwargs["json"], {"status": "shipping"})
         self.assertEqual(patch_mock.call_args_list[1].kwargs["json"], {"status": "packed"})
+        self.assertEqual(
+            put_mock.call_args.kwargs["headers"],
+            {"X-Internal-Service-Token": "gateway-internal-token"},
+        )
 
     @patch("app.views.requests.put")
     @patch("app.views.requests.patch")
