@@ -14,6 +14,7 @@ from app.services.behavior_model import BehaviorModelService
 from app.services.graph_kb import GraphEdge, GraphFact, GraphKnowledgeBase, GraphNode
 from app.services.graph_retriever import GraphRetriever
 from app.services.knowledge_base import KnowledgeBaseService
+from app.services.rag_pipeline import HybridRAGPipeline
 from app.services.text_retriever import TextRetriever
 
 
@@ -678,3 +679,62 @@ class TextRetrieverTests(TestCase):
 
         self.assertEqual(docs[0]["id"], "segment_tech_reader")
         self.assertGreater(docs[0]["score"], 0)
+
+
+class HybridRAGPipelineTests(TestCase):
+    def setUp(self):
+        graph = GraphKnowledgeBase("app/data/knowledge_graph")
+        kb_service = KnowledgeBaseService("app/data/knowledge_base")
+        self.pipeline = HybridRAGPipeline(
+            GraphRetriever(graph),
+            TextRetriever(kb_service),
+        )
+
+    def test_pipeline_returns_graph_facts_text_sources_and_context_blocks(self):
+        result = self.pipeline.retrieve(
+            question="Recommend books and explain shipping for a tech reader",
+            behavior_segment="tech_reader",
+            top_k=3,
+        )
+
+        self.assertIn("graph_facts", result)
+        self.assertIn("graph_paths", result)
+        self.assertIn("text_sources", result)
+        self.assertIn("context_blocks", result)
+
+        self.assertTrue(result["graph_facts"])
+        self.assertTrue(result["text_sources"])
+        self.assertTrue(result["context_blocks"])
+
+        block_kinds = {block["kind"] for block in result["context_blocks"]}
+        self.assertIn("graph_fact", block_kinds)
+        self.assertIn("text_source", block_kinds)
+
+        context_text = "\n".join(block.get("text", "") for block in result["context_blocks"])
+        self.assertTrue(any(fact["statement"] in context_text for fact in result["graph_facts"]))
+        self.assertTrue(any(source["text"] in context_text for source in result["text_sources"]))
+
+    def test_prompt_builder_accepts_hybrid_context_payload(self):
+        from app.services.prompting import build_chat_prompt
+
+        result = self.pipeline.retrieve(
+            question="Recommend books and explain shipping for a tech reader",
+            behavior_segment="tech_reader",
+            top_k=2,
+        )
+
+        prompt = build_chat_prompt(
+            question="Recommend books and explain shipping for a tech reader",
+            behavior_segment="tech_reader",
+            feature_summary="Predicted segment is tech_reader.",
+            recommended_books=[{"title": "Clean Code", "price": "29.99"}],
+            graph_facts=result["graph_facts"],
+            graph_paths=result["graph_paths"],
+            text_sources=result["text_sources"],
+            context_blocks=result["context_blocks"],
+        )
+
+        self.assertIn("Relevant context:", prompt)
+        self.assertIn("Graph fact:", prompt)
+        self.assertIn("Text source:", prompt)
+        self.assertIn("Clean Code", prompt)
