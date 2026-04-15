@@ -12,6 +12,7 @@ from app.management.commands import train_behavior_model as train_behavior_model
 from app.services.behavior_dataset import BehaviorDatasetSchema
 from app.services.behavior_model import BehaviorModelService
 from app.services.graph_kb import GraphEdge, GraphKnowledgeBase, GraphNode
+from app.services.graph_retriever import GraphRetriever
 
 
 class AdvisorBaselineTests(TestCase):
@@ -479,3 +480,48 @@ class GraphKnowledgeBaseTests(TestCase):
         }
 
         self.assertEqual(set(graph.nodes), referenced_nodes)
+
+
+class GraphRetrieverTests(TestCase):
+    def setUp(self):
+        self.graph = GraphKnowledgeBase("app/data/knowledge_graph")
+        self.retriever = GraphRetriever(self.graph)
+
+    def test_graph_retriever_returns_segment_facts_and_direct_shipping_path(self):
+        result = self.retriever.search(
+            question="I read novels and want reliable shipping updates for my books.",
+            behavior_segment="literature_reader",
+        )
+
+        self.assertTrue(result["facts"])
+        self.assertTrue(result["paths"])
+
+        fact_node_ids = [fact["node_id"] for fact in result["facts"]]
+        self.assertIn("segment:literature_reader", fact_node_ids)
+        self.assertIn("service:shipping", fact_node_ids)
+        self.assertTrue(any("shipping" in fact["statement"].lower() for fact in result["facts"]))
+        self.assertTrue(
+            any(
+                path["nodes"] == ["segment:literature_reader", "service:shipping"]
+                for path in result["paths"]
+            )
+        )
+
+    def test_graph_retriever_uses_category_relation_overlap_for_family_reader(self):
+        result = self.retriever.search(
+            question="I need children's books and flexible cancellation rules.",
+            behavior_segment="family_reader",
+        )
+
+        fact_node_ids = [fact["node_id"] for fact in result["facts"]]
+        self.assertIn("segment:family_reader", fact_node_ids)
+        self.assertIn("policy:cancellation", fact_node_ids)
+        self.assertTrue(
+            any(node["id"] == "category:children" for node in result["matched_nodes"])
+        )
+        self.assertTrue(
+            any(
+                path["nodes"] == ["segment:family_reader", "category:children", "policy:cancellation"]
+                for path in result["paths"]
+            )
+        )
