@@ -1,0 +1,11 @@
+django
+djangorestframework
+requests
+dj-database-url
+gunicorn
+numpy
+pandas
+scikit-learn
+tensorflow-cpu
+sentence-transformers
+faiss-cpu

@@ -1,0 +1,12 @@
+[
+  {
+    "id": "segment_tech_reader",
+    "title": "Advice for technology readers",
+    "doc_type": "segment_advice",
+    "source_service": "advisor-service",
+    "category": "behavior",
+    "target_segment": "tech_reader",
+    "tags": ["technology", "programming", "career"],
+    "text": "Technology-oriented customers usually prefer programming, software engineering, data, and innovation books."
+  }
+]

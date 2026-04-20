@@ -54,6 +54,16 @@ services:
           type: pserv
           name: bookstore-notification-service
           property: hostport
+      - key: ADVISOR_SERVICE_URL
+        fromService:
+          type: pserv
+          name: bookstore-advisor-service
+          property: hostport
+      - key: SHIPPING_SERVICE_URL
+        fromService:
+          type: pserv
+          name: bookstore-shipping-service
+          property: hostport
 
   - type: pserv
     name: bookstore-user-service
@@ -267,6 +277,80 @@ services:
     dockerfilePath: ./notification-service/Dockerfile
     disk:
       name: notification-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: DEBUG
+        value: "false"
+      - key: ALLOWED_HOSTS
+        value: "*"
+      - key: DATABASE_URL
+        value: sqlite:////var/data/db.sqlite3
+      - key: SECRET_KEY
+        generateValue: true
+
+
+  - type: pserv
+    name: bookstore-advisor-service
+    runtime: docker
+    plan: starter
+    region: singapore
+    dockerContext: ./advisor-service
+    dockerfilePath: ./advisor-service/Dockerfile
+    disk:
+      name: advisor-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: DEBUG
+        value: "false"
+      - key: ALLOWED_HOSTS
+        value: "*"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: BOOK_SERVICE_URL
+        fromService:
+          type: pserv
+          name: bookstore-book-service
+          property: hostport
+      - key: ORDER_SERVICE_URL
+        fromService:
+          type: pserv
+          name: bookstore-order-service
+          property: hostport
+      - key: REVIEW_SERVICE_URL
+        fromService:
+          type: pserv
+          name: bookstore-review-service
+          property: hostport
+      - key: CART_SERVICE_URL
+        fromService:
+          type: pserv
+          name: bookstore-cart-service
+          property: hostport
+      - key: USER_SERVICE_URL
+        fromService:
+          type: pserv
+          name: bookstore-user-service
+          property: hostport
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: "gpt-4o-mini"
+
+  - type: pserv
+    name: bookstore-shipping-service
+    runtime: docker
+    plan: starter
+    region: singapore
+    dockerContext: ./shipping-service
+    dockerfilePath: ./shipping-service/Dockerfile
+    disk:
+      name: shipping-data
       mountPath: /var/data
       sizeGB: 1
     envVars:

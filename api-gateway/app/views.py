@@ -1,7 +1,9 @@
+import json
 import os
+from decimal import Decimal
 
 import requests
-from django.http import HttpResponseForbidden, JsonResponse
+from django.http import HttpResponseForbidden, HttpResponseNotFound, JsonResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.csrf import csrf_exempt
 
@@ -21,6 +23,28 @@ ORDER_SERVICE_URL = _service_url("ORDER_SERVICE_URL", "order-service:8000")
 PAYMENT_SERVICE_URL = _service_url("PAYMENT_SERVICE_URL", "payment-service:8000")
 REVIEW_SERVICE_URL = _service_url("REVIEW_SERVICE_URL", "review-service:8000")
 NOTIFICATION_SERVICE_URL = _service_url("NOTIFICATION_SERVICE_URL", "notification-service:8000")
+ADVISOR_SERVICE_URL = _service_url("ADVISOR_SERVICE_URL", "advisor-service:8000")
+SHIPPING_SERVICE_URL = _service_url("SHIPPING_SERVICE_URL", "shipping-service:8000")
+STAFF_ORDER_STATUS_TRANSITIONS = {
+    "pending": ["confirmed", "cancelled"],
+    "confirmed": ["paid", "cancelled"],
+}
+SHIPPING_STATUS_OPTIONS = ["pending", "packed", "shipping", "delivered"]
+SHIPPING_STATUS_TRANSITIONS = {
+    "pending": {"packed"},
+    "packed": {"shipping"},
+    "shipping": {"delivered"},
+    "delivered": set(),
+}
+
+
+def _dashboard_path_for_role(role):
+    dashboard_paths = {
+        "admin": "/admin/dashboard/",
+        "staff": "/staff/dashboard/",
+        "customer": "/customer/dashboard/",
+    }
+    return dashboard_paths.get(role, "/login/")
 
 
 def _get_user(request):
@@ -55,6 +79,338 @@ def _require_matching_user(request, resource_user_id):
     if user["id"] != resource_user_id:
         return user, token, HttpResponseForbidden("You cannot access another user's data.")
     return user, token, None
+
+
+def _upstream_error(response, fallback):
+    try:
+        payload = response.json()
+    except ValueError:
+        return fallback
+
+    if isinstance(payload, dict):
+        return payload.get("error", fallback)
+    return fallback
+
+
+def _shipping_for_order(order_id):
+    try:
+        response = requests.get(
+            f"{SHIPPING_SERVICE_URL}/shipping/",
+            params={"order_id": order_id},
+            timeout=5,
+        )
+        if response.status_code != 200:
+            return None
+        shipments = response.json()
+        if isinstance(shipments, list) and shipments:
+            return shipments[0]
+    except requests.exceptions.RequestException:
+        pass
+    return None
+
+
+def _order_service_internal_headers():
+    return {
+        "X-Internal-Service-Token": os.getenv("ORDER_SERVICE_INTERNAL_TOKEN", "gateway-internal-token"),
+    }
+
+
+def _sync_order_status_for_shipping(order_id, shipment_status):
+    order_status = {"shipping": "shipping", "delivered": "delivered"}.get(shipment_status)
+    if not order_status:
+        return
+
+    return requests.put(
+        f"{ORDER_SERVICE_URL}/orders/{order_id}/status/",
+        json={"status": order_status},
+        headers=_order_service_internal_headers(),
+        timeout=5,
+    )
+
+
+def _load_order(order_id):
+    try:
+        response = requests.get(f"{ORDER_SERVICE_URL}/orders/{order_id}/", timeout=5)
+    except requests.exceptions.RequestException:
+        return None, None
+
+    if response.status_code != 200:
+        return None, response
+
+    try:
+        return response.json(), response
+    except ValueError:
+        return None, response
+
+
+def _can_transition_shipment(current_status, next_status):
+    return next_status == current_status or next_status in SHIPPING_STATUS_TRANSITIONS.get(current_status, set())
+
+
+def _order_ready_for_shipment_status(order_status, current_shipment_status, next_shipment_status):
+    required_status = {
+        ("packed", "shipping"): "paid",
+        ("shipping", "delivered"): "shipping",
+    }.get((current_shipment_status, next_shipment_status))
+    if required_status is None:
+        return True
+    return order_status == required_status
+
+
+def _rollback_shipment_status(shipment_id, previous_status):
+    try:
+        return requests.patch(
+            f"{SHIPPING_SERVICE_URL}/shipping/{shipment_id}/",
+            json={"status": previous_status},
+            timeout=5,
+        )
+    except requests.exceptions.RequestException:
+        return None
+
+
+def _create_shipping_error_context(user, error):
+    try:
+        order_response = requests.get(f"{ORDER_SERVICE_URL}/orders/", timeout=5)
+        orders = order_response.json() if order_response.status_code == 200 else []
+    except requests.exceptions.RequestException:
+        orders = []
+        if error is None:
+            error = "Order service unavailable."
+
+    try:
+        shipment_response = requests.get(f"{SHIPPING_SERVICE_URL}/shipping/", timeout=5)
+        shipments = shipment_response.json() if shipment_response.status_code == 200 else []
+    except requests.exceptions.RequestException:
+        shipments = []
+        if error is None:
+            error = "Shipping service unavailable."
+
+    shipment_by_order_id = {shipment["order_id"]: shipment for shipment in shipments if "order_id" in shipment}
+    managed_orders = []
+    for order in orders:
+        if order.get("status") == "cancelled":
+            continue
+        order["shipment"] = shipment_by_order_id.get(order.get("id"))
+        order["can_create_shipment"] = order.get("status") == "paid" and not order["shipment"]
+        managed_orders.append(order)
+
+    return {
+        "user": user,
+        "orders": managed_orders,
+        "shipments": shipments,
+        "error": error,
+    }
+
+
+def _create_staff_orders_context(user, error=None):
+    try:
+        response = requests.get(f"{ORDER_SERVICE_URL}/orders/", timeout=5)
+        orders = response.json() if response.status_code == 200 else []
+    except requests.exceptions.RequestException:
+        orders = []
+        if error is None:
+            error = "Order service unavailable."
+
+    managed_orders = []
+    for order in orders:
+        next_statuses = STAFF_ORDER_STATUS_TRANSITIONS.get(order.get("status"))
+        if not next_statuses:
+            continue
+        order["next_statuses"] = next_statuses
+        managed_orders.append(order)
+
+    return {
+        "user": user,
+        "orders": managed_orders,
+        "error": error,
+    }
+
+
+def _fetch_json_list(url, timeout=5):
+    try:
+        response = requests.get(url, timeout=timeout)
+    except requests.exceptions.RequestException:
+        return []
+    if response.status_code != 200:
+        return []
+    try:
+        payload = response.json()
+    except ValueError:
+        return []
+    return payload if isinstance(payload, list) else []
+
+
+def _normalize_filter_value(value):
+    return (value or "").strip().lower()
+
+
+def _user_matches_filters(user, query, role_filter, status_filter):
+    if query:
+        searchable_values = [
+            user.get("username", ""),
+            user.get("full_name", ""),
+            user.get("email", ""),
+            user.get("phone", ""),
+            user.get("address", ""),
+            user.get("role", ""),
+        ]
+        if not any(query in str(value).lower() for value in searchable_values):
+            return False
+
+    if role_filter and role_filter != "all" and user.get("role") != role_filter:
+        return False
+
+    if status_filter and status_filter != "all":
+        is_active = bool(user.get("is_active", False))
+        if status_filter == "active" and not is_active:
+            return False
+        if status_filter == "inactive" and is_active:
+            return False
+
+    return True
+
+
+def _book_matches_filters(book, query, category_filter, stock_filter):
+    if query:
+        searchable_values = [
+            book.get("title", ""),
+            book.get("author", ""),
+            book.get("category_name", ""),
+            book.get("publisher_name", ""),
+        ]
+        if not any(query in str(value).lower() for value in searchable_values):
+            return False
+
+    if category_filter and category_filter != "all":
+        category_value = str(book.get("category"))
+        category_name = _normalize_filter_value(book.get("category_name"))
+        if category_filter not in {category_value.lower(), category_name}:
+            return False
+
+    if stock_filter and stock_filter != "all":
+        stock_value = int(book.get("stock", 0) or 0)
+        if stock_filter == "low" and stock_value > 5:
+            return False
+        if stock_filter == "in_stock" and stock_value <= 5:
+            return False
+        if stock_filter == "out" and stock_value > 0:
+            return False
+
+    return True
+
+
+def _create_admin_users_context(request, user):
+    users = _fetch_json_list(f"{USER_SERVICE_URL}/users/")
+    query = _normalize_filter_value(request.GET.get("q"))
+    role_filter = _normalize_filter_value(request.GET.get("role"))
+    status_filter = _normalize_filter_value(request.GET.get("status"))
+
+    filtered_users = []
+    for item in users:
+        if not isinstance(item, dict):
+            continue
+        if not _user_matches_filters(item, query, role_filter, status_filter):
+            continue
+        filtered_users.append(
+            {
+                **item,
+                "display_name": item.get("full_name") or item.get("username") or f"User #{item.get('id')}",
+                "status_label": "Active" if item.get("is_active", False) else "Inactive",
+            }
+        )
+
+    return {
+        "user": user,
+        "page_title": "Manage Users",
+        "page_description": "Review registrations, roles, and account status from the user service.",
+        "admin_section": "users",
+        "users": filtered_users,
+        "user_summary": {
+            "total": len(users),
+            "filtered": len(filtered_users),
+            "active": sum(1 for item in users if isinstance(item, dict) and item.get("is_active")),
+            "staff": sum(1 for item in users if isinstance(item, dict) and item.get("role") == "staff"),
+            "customers": sum(1 for item in users if isinstance(item, dict) and item.get("role") == "customer"),
+        },
+        "query": request.GET.get("q", ""),
+        "role_filter": request.GET.get("role", "all"),
+        "status_filter": request.GET.get("status", "all"),
+    }
+
+
+def _create_admin_products_context(request, user):
+    books = _fetch_json_list(f"{BOOK_SERVICE_URL}/books/")
+    categories = {
+        item.get("id"): item.get("name")
+        for item in _fetch_json_list(f"{BOOK_SERVICE_URL}/categories/")
+        if isinstance(item, dict) and item.get("id") is not None
+    }
+    publishers = {
+        item.get("id"): item.get("name")
+        for item in _fetch_json_list(f"{BOOK_SERVICE_URL}/publishers/")
+        if isinstance(item, dict) and item.get("id") is not None
+    }
+
+    query = _normalize_filter_value(request.GET.get("q"))
+    category_filter = _normalize_filter_value(request.GET.get("category"))
+    stock_filter = _normalize_filter_value(request.GET.get("stock"))
+
+    filtered_books = []
+    for item in books:
+        if not isinstance(item, dict):
+            continue
+        annotated = {
+            **item,
+            "category_name": categories.get(item.get("category")) or "Uncategorized",
+            "publisher_name": publishers.get(item.get("publisher")) or "Unknown publisher",
+        }
+        annotated["stock_label"] = "Low stock" if int(annotated.get("stock", 0) or 0) <= 5 else "In stock"
+        if not _book_matches_filters(annotated, query, category_filter, stock_filter):
+            continue
+        filtered_books.append(annotated)
+
+    return {
+        "user": user,
+        "page_title": "Manage Products",
+        "page_description": "Inspect the catalog, stock levels, and publishing metadata from book service.",
+        "admin_section": "products",
+        "books": filtered_books,
+        "categories": sorted(
+            [{"id": category_id, "name": name} for category_id, name in categories.items()],
+            key=lambda item: item["name"] or "",
+        ),
+        "publishers": sorted(
+            [{"id": publisher_id, "name": name} for publisher_id, name in publishers.items()],
+            key=lambda item: item["name"] or "",
+        ),
+        "product_summary": {
+            "total": len(books),
+            "filtered": len(filtered_books),
+            "low_stock": sum(1 for item in books if isinstance(item, dict) and int(item.get("stock", 0) or 0) <= 5),
+            "out_of_stock": sum(1 for item in books if isinstance(item, dict) and int(item.get("stock", 0) or 0) <= 0),
+        },
+        "query": request.GET.get("q", ""),
+        "category_filter": request.GET.get("category", "all"),
+        "stock_filter": request.GET.get("stock", "all"),
+    }
+
+
+def _render_staff_shipping_error(request, user, error):
+    return render(request, "staff_shipping.html", _create_shipping_error_context(user, error))
+
+
+def _render_shipping_detail(request, user, order, shipment, error):
+    return render(
+        request,
+        "shipping_detail.html",
+        {
+            "user": user,
+            "order": order,
+            "shipment": shipment,
+            "shipping_status_options": SHIPPING_STATUS_OPTIONS,
+            "error": error,
+        },
+    )
 
 
 def health_check(request):
@@ -114,6 +470,64 @@ def register_view(request):
 def logout_view(request):
     request.session.flush()
     return redirect("/login/")
+
+
+def dashboard_view(request):
+    user, _ = _get_user(request)
+    if not user:
+        return redirect("/login/")
+    return redirect(_dashboard_path_for_role(user.get("role")))
+
+
+def role_dashboard_view(request, role):
+    user, _ = _get_user(request)
+    if not user:
+        return redirect("/login/")
+
+    target = _dashboard_path_for_role(user.get("role"))
+    if request.path != target:
+        return redirect(target)
+    dashboards = {
+        "admin": {
+            "template_name": "dashboard_admin.html",
+            "page_title": "Admin dashboard",
+            "page_description": "Track platform health, user activity, and catalog readiness from one place.",
+        },
+        "staff": {
+            "template_name": "dashboard_staff.html",
+            "page_title": "Staff dashboard",
+            "page_description": "Stay on top of daily fulfillment, shipping, and inventory operations.",
+        },
+        "customer": {
+            "template_name": "dashboard_customer.html",
+            "page_title": "Customer dashboard",
+            "page_description": "Pick up where you left off with recommendations, orders, and account activity.",
+        },
+    }
+    dashboard = dashboards.get(role)
+    if not dashboard:
+        return redirect("/login/")
+
+    context = {
+        "user": user,
+        "page_title": dashboard.get("page_title"),
+        "page_description": dashboard.get("page_description"),
+    }
+    if role == "admin":
+        section = request.GET.get("section")
+        if section not in {"users", "products"}:
+            section = "overview"
+        context["admin_section"] = section
+        if section == "users":
+            return render(request, "admin_users.html", _create_admin_users_context(request, user))
+        if section == "products":
+            return render(request, "admin_products.html", _create_admin_products_context(request, user))
+
+    return render(
+        request,
+        dashboard["template_name"],
+        context,
+    )
 
 
 def profile_view(request):
@@ -278,6 +692,17 @@ def book_detail(request, pk):
         book_resp = requests.get(f"{BOOK_SERVICE_URL}/books/{pk}/", timeout=5)
         if book_resp.status_code == 200:
             book = book_resp.json()
+            try:
+                category_resp = requests.get(f"{BOOK_SERVICE_URL}/categories/", timeout=5)
+                if category_resp.status_code == 200:
+                    categories = {item["id"]: item["name"] for item in category_resp.json()}
+                    book["category_name"] = categories.get(book.get("category"))
+                publisher_resp = requests.get(f"{BOOK_SERVICE_URL}/publishers/", timeout=5)
+                if publisher_resp.status_code == 200:
+                    publishers = {item["id"]: item["name"] for item in publisher_resp.json()}
+                    book["publisher_name"] = publishers.get(book.get("publisher"))
+            except requests.exceptions.RequestException:
+                pass
         review_resp = requests.get(f"{REVIEW_SERVICE_URL}/reviews/?book_id={pk}", timeout=5)
         if review_resp.status_code == 200:
             reviews = review_resp.json()
@@ -346,7 +771,7 @@ def add_to_cart(request):
         try:
             requests.post(
                 f"{CART_SERVICE_URL}/cart-items/",
-                json={"cart": user_id, "book_id": int(book_id), "quantity": int(quantity)},
+                json={"customer_id": user_id, "book_id": int(book_id), "quantity": int(quantity)},
                 timeout=5,
             )
         except requests.exceptions.RequestException:
@@ -378,6 +803,59 @@ def view_cart(request, customer_id):
         items = []
 
     return render(request, "cart.html", {"items": items, "customer_id": customer_id, "user": user})
+
+
+def _checkout_context_for_user(user):
+    try:
+        cart_resp = requests.get(f"{CART_SERVICE_URL}/carts/{user['id']}/", timeout=5)
+        if cart_resp.status_code != 200:
+            return {"items": [], "total_amount": "0.00", "error": "Cart not found or empty"}
+        cart_items = cart_resp.json()
+    except requests.exceptions.RequestException as exc:
+        return {"items": [], "total_amount": "0.00", "error": f"Cart service unavailable: {exc}"}
+
+    if not cart_items:
+        return {"items": [], "total_amount": "0.00", "error": "Your cart is empty"}
+
+    books = {}
+    if any("book_title" not in item or "book_price" not in item for item in cart_items):
+        try:
+            books_resp = requests.get(f"{BOOK_SERVICE_URL}/books/", timeout=5)
+            books_resp.raise_for_status()
+            books = {book["id"]: book for book in books_resp.json()}
+        except requests.exceptions.RequestException as exc:
+            return {"items": [], "total_amount": "0.00", "error": f"Book service unavailable: {exc}"}
+
+    checkout_items = []
+    total_amount = Decimal("0.00")
+    for item in cart_items:
+        book_title = item.get("book_title")
+        unit_price_value = item.get("book_price")
+        if book_title is None or unit_price_value is None:
+            book = books.get(item.get("book_id"))
+            if not book:
+                return {"items": [], "total_amount": "0.00", "error": f"Book {item.get('book_id')} not found"}
+            book_title = book["title"]
+            unit_price_value = book["price"]
+
+        unit_price = Decimal(str(unit_price_value))
+        quantity = int(item["quantity"])
+        checkout_items.append(
+            {
+                "book_id": item["book_id"],
+                "quantity": quantity,
+                "book_title": book_title,
+                "unit_price": f"{unit_price:.2f}",
+                "subtotal": f"{(unit_price * quantity):.2f}",
+            }
+        )
+        total_amount += unit_price * quantity
+
+    return {
+        "items": checkout_items,
+        "total_amount": f"{total_amount:.2f}",
+        "error": None,
+    }
 
 
 @csrf_exempt
@@ -419,7 +897,11 @@ def checkout(request):
     user, _ = _get_user(request)
     if not user:
         return redirect("/login/")
+    checkout_context = _checkout_context_for_user(user)
     if request.method == "POST":
+        if checkout_context["error"]:
+            return render(request, "checkout.html", {"error": checkout_context["error"], "user": user, **checkout_context})
+
         data = {
             "user_id": user["id"],
             "shipping_name": request.POST.get("shipping_name"),
@@ -427,32 +909,68 @@ def checkout(request):
             "shipping_address": request.POST.get("shipping_address"),
             "note": request.POST.get("note", ""),
             "payment_method": request.POST.get("payment_method", "cod"),
+            "items": [
+                {
+                    "book_id": item["book_id"],
+                    "quantity": item["quantity"],
+                    "book_title": item["book_title"],
+                    "unit_price": item["unit_price"],
+                }
+                for item in checkout_context["items"]
+            ],
         }
         try:
-            response = requests.post(f"{ORDER_SERVICE_URL}/orders/checkout/", json=data, timeout=10)
+            response = requests.post(f"{ORDER_SERVICE_URL}/orders/", json=data, timeout=10)
             if response.status_code == 201:
                 order = response.json()
-                try:
-                    requests.post(
-                        f"{NOTIFICATION_SERVICE_URL}/notifications/",
-                        json={
-                            "user_id": user["id"],
-                            "type": "order_confirmed",
-                            "title": f"Order #{order['id']} placed!",
-                            "message": f"Your order of ${order['total_amount']} has been placed successfully.",
-                            "reference_id": order["id"],
+                if data["payment_method"] in {"demo_success", "demo_fail"}:
+                    payment_payload = {
+                        "order_id": order["id"],
+                        "amount": checkout_context["total_amount"],
+                        "method": data["payment_method"],
+                    }
+                    payment_message = "Payment completed."
+                    payment = None
+                    payment_status = "completed"
+                    try:
+                        payment_response = requests.post(
+                            f"{PAYMENT_SERVICE_URL}/payments/",
+                            json=payment_payload,
+                            timeout=10,
+                        )
+                        try:
+                            payment_data = payment_response.json()
+                        except ValueError:
+                            payment_data = {}
+                        payment = payment_data.get("payment")
+                        payment_message = payment_data.get("message", payment_message)
+                        payment_status = (
+                            payment.get("status")
+                            if isinstance(payment, dict) and payment.get("status")
+                            else "failed"
+                        )
+                    except requests.exceptions.RequestException as exc:
+                        payment_message = f"Demo payment could not be processed: {exc}"
+                        payment_status = "failed"
+
+                    return render(
+                        request,
+                        "payment_result.html",
+                        {
+                            "user": user,
+                            "order": order,
+                            "payment": payment,
+                            "payment_status": payment_status,
+                            "message": payment_message,
                         },
-                        timeout=3,
                     )
-                except requests.exceptions.RequestException:
-                    pass
                 return redirect(f"/orders/{order['id']}/")
             error = response.json().get("error", "Checkout failed")
-            return render(request, "checkout.html", {"error": error, "user": user})
+            return render(request, "checkout.html", {"error": error, "user": user, **checkout_context})
         except requests.exceptions.RequestException as exc:
-            return render(request, "checkout.html", {"error": str(exc), "user": user})
+            return render(request, "checkout.html", {"error": str(exc), "user": user, **checkout_context})
 
-    return render(request, "checkout.html", {"user": user})
+    return render(request, "checkout.html", {"user": user, **checkout_context})
 
 
 def order_list(request):
@@ -464,7 +982,7 @@ def order_list(request):
         orders = response.json() if response.status_code == 200 else []
     except requests.exceptions.RequestException:
         orders = []
-    return render(request, "orders.html", {"orders": orders, "user": user})
+    return render(request, "my_orders.html", {"orders": orders, "user": user})
 
 
 def order_detail(request, pk):
@@ -481,6 +999,160 @@ def order_detail(request, pk):
         return HttpResponseForbidden("You cannot access another user's order.")
 
     return render(request, "order_detail.html", {"order": order, "user": user})
+
+
+@csrf_exempt
+def staff_orders_view(request):
+    user, _ = _get_user(request)
+    if not user:
+        return redirect("/login/")
+    if user.get("role") != "staff":
+        return redirect(_dashboard_path_for_role(user.get("role")))
+
+    error = None
+    if request.method == "POST":
+        try:
+            order_id = int(request.POST.get("order_id", ""))
+        except (TypeError, ValueError):
+            error = "A valid order is required."
+        else:
+            try:
+                order, order_response = _load_order(order_id)
+                if order is None:
+                    if order_response and order_response.status_code == 404:
+                        error = "Order not found."
+                    else:
+                        error = "Order service could not verify this order."
+                else:
+                    allowed_statuses = STAFF_ORDER_STATUS_TRANSITIONS.get(order.get("status"), [])
+                    next_status = request.POST.get("status")
+                    if next_status not in allowed_statuses:
+                        error = "Select a valid staff order status."
+                    else:
+                        response = requests.put(
+                            f"{ORDER_SERVICE_URL}/orders/{order_id}/status/",
+                            json={"status": next_status},
+                            headers=_order_service_internal_headers(),
+                            timeout=5,
+                        )
+                        if response.status_code == 200:
+                            return redirect("/staff/orders/")
+                        error = _upstream_error(response, "Order service rejected the status update.")
+            except requests.exceptions.RequestException as exc:
+                error = f"Order service unavailable: {exc}"
+
+    return render(request, "staff_orders.html", _create_staff_orders_context(user, error))
+
+
+@csrf_exempt
+def staff_shipping_view(request):
+    user, _ = _get_user(request)
+    if not user:
+        return redirect("/login/")
+    if user.get("role") != "staff":
+        return redirect(_dashboard_path_for_role(user.get("role")))
+
+    error = None
+    if request.method == "POST":
+        try:
+            order_id = int(request.POST.get("order_id", ""))
+        except (TypeError, ValueError):
+            error = "A valid order is required to create a shipment."
+        else:
+            order, order_response = _load_order(order_id)
+            if order is None:
+                if order_response and order_response.status_code == 404:
+                    error = "Order not found."
+                else:
+                    error = "Order service could not verify this order."
+                return _render_staff_shipping_error(request, user, error)
+
+            if order.get("status") == "cancelled":
+                error = "Cancelled orders cannot receive shipments."
+                return _render_staff_shipping_error(request, user, error)
+
+            if order.get("status") != "paid":
+                error = "Only paid orders can be moved into shipping."
+                return _render_staff_shipping_error(request, user, error)
+
+            existing_shipment = _shipping_for_order(order_id)
+            if existing_shipment:
+                return redirect(f"/shipping/{order_id}/")
+
+            try:
+                response = requests.post(
+                    f"{SHIPPING_SERVICE_URL}/shipping/",
+                    json={"order_id": order_id, "status": "pending"},
+                    timeout=5,
+                )
+                if response.status_code in {200, 201}:
+                    return redirect(f"/shipping/{order_id}/")
+                error = _upstream_error(response, "Shipping service rejected shipment creation.")
+            except requests.exceptions.RequestException as exc:
+                error = f"Shipping service unavailable: {exc}"
+    return render(request, "staff_shipping.html", _create_shipping_error_context(user, error))
+
+
+@csrf_exempt
+def shipping_detail(request, order_id):
+    user, _ = _get_user(request)
+    if not user:
+        return redirect("/login/")
+    if user.get("role") not in {"staff", "customer"}:
+        return redirect(_dashboard_path_for_role(user.get("role")))
+
+    error = None
+    order, order_response = _load_order(order_id)
+
+    if user.get("role") == "customer" and order is None:
+        return HttpResponseNotFound("Shipment not found.")
+
+    if order and user.get("role") == "customer" and order.get("user_id") != user["id"]:
+        return HttpResponseForbidden("You cannot access another user's shipment.")
+
+    if order is None:
+        error = "Order service unavailable."
+        order = {}
+
+    shipment = _shipping_for_order(order_id)
+
+    if request.method == "POST" and user.get("role") == "staff" and shipment:
+        next_status = request.POST.get("status")
+        if next_status not in SHIPPING_STATUS_OPTIONS:
+            error = "Select a valid shipping status."
+        elif not _can_transition_shipment(shipment["status"], next_status):
+            error = "Invalid shipping status transition."
+        elif not _order_ready_for_shipment_status(order.get("status"), shipment["status"], next_status):
+            error = "Order is not ready for this shipping update."
+        elif next_status == shipment["status"]:
+            return redirect(f"/shipping/{order_id}/")
+        else:
+            previous_status = shipment["status"]
+            try:
+                response = requests.patch(
+                    f"{SHIPPING_SERVICE_URL}/shipping/{shipment['id']}/",
+                    json={"status": next_status},
+                    timeout=5,
+                )
+                if response.status_code == 200:
+                    order_sync_response = _sync_order_status_for_shipping(order_id, next_status)
+                    if order_sync_response is None:
+                        return redirect(f"/shipping/{order_id}/")
+                    if order_sync_response.status_code != 200:
+                        rollback_response = _rollback_shipment_status(shipment["id"], previous_status)
+                        if rollback_response is not None and rollback_response.status_code == 200:
+                            error = "Order status sync failed. Shipment change was rolled back."
+                        else:
+                            error = "Order status sync failed and shipment rollback may be required."
+                    else:
+                        return redirect(f"/shipping/{order_id}/")
+                else:
+                    error = _upstream_error(response, "Shipping service rejected the status update.")
+            except requests.exceptions.RequestException as exc:
+                error = f"Shipping service unavailable: {exc}"
+            shipment = _shipping_for_order(order_id)
+
+    return _render_shipping_detail(request, user, order, shipment, error)
 
 
 @csrf_exempt
@@ -515,3 +1187,81 @@ def notifications_view(request):
     except requests.exceptions.RequestException:
         notifications = []
     return render(request, "notifications.html", {"notifications": notifications, "user": user})
+
+
+def _parse_json_body(request):
+    raw_body = request.body or b""
+    if not raw_body.strip():
+        return {}
+
+    try:
+        body = json.loads(raw_body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError):
+        raise ValueError("Invalid JSON payload")
+
+    if not isinstance(body, dict):
+        raise ValueError("Invalid JSON payload")
+
+    return body
+
+
+def _json_from_upstream(response, service_name):
+    try:
+        payload = response.json()
+    except ValueError:
+        status = response.status_code if response.status_code >= 400 else 502
+        return {"error": f"{service_name} returned a non-JSON response"}, status
+
+    return payload, response.status_code
+
+
+def _normalize_advisor_payload(payload):
+    if not isinstance(payload, dict):
+        return payload
+
+    normalized = dict(payload)
+    normalized["behavior_segment"] = payload.get("behavior_segment")
+    normalized["probabilities"] = payload.get("probabilities") or {}
+    normalized["recommended_books"] = payload.get("recommended_books") or []
+    normalized["sources"] = payload.get("sources") or []
+    normalized["graph_facts"] = payload.get("graph_facts") or []
+    normalized["graph_paths"] = payload.get("graph_paths") or []
+    return normalized
+
+
+@csrf_exempt
+def advisor_chat(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+
+    user, _ = _get_user(request)
+    try:
+        body = _parse_json_body(request)
+    except ValueError:
+        return JsonResponse({"error": "Invalid JSON request body"}, status=400)
+
+    payload = {
+        "question": body.get("question", ""),
+        "user_id": user["id"] if user else None,
+    }
+    try:
+        response = requests.post(f"{ADVISOR_SERVICE_URL}/advisor/chat/", json=payload, timeout=15)
+        payload, status = _json_from_upstream(response, "Advisor service")
+        payload = _normalize_advisor_payload(payload)
+        return JsonResponse(payload, status=status, safe=isinstance(payload, dict))
+    except requests.exceptions.RequestException as exc:
+        return JsonResponse({"error": f"Advisor service unavailable: {exc}"}, status=503)
+
+
+def advisor_profile(request):
+    user, _ = _get_user(request)
+    if not user:
+        return JsonResponse({"error": "Authentication required"}, status=401)
+
+    try:
+        response = requests.get(f"{ADVISOR_SERVICE_URL}/advisor/profile/{user['id']}/", timeout=10)
+        payload, status = _json_from_upstream(response, "Advisor service")
+        payload = _normalize_advisor_payload(payload)
+        return JsonResponse(payload, status=status, safe=isinstance(payload, dict))
+    except requests.exceptions.RequestException as exc:
+        return JsonResponse({"error": f"Advisor service unavailable: {exc}"}, status=503)

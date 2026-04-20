@@ -16,6 +16,12 @@
         <div class="card-body">
             <div style="display:flex; gap:1rem; flex-wrap:wrap; margin:1rem 0;">
                 <span class="stock-badge"><i class="fa-solid fa-box"></i> {{ book.stock }} in stock</span>
+                {% if book.category_name %}
+                <span class="stock-badge"><i class="fa-solid fa-book-open"></i> {{ book.category_name }}</span>
+                {% endif %}
+                {% if book.publisher_name %}
+                <span class="stock-badge"><i class="fa-solid fa-building"></i> {{ book.publisher_name }}</span>
+                {% endif %}
                 {% if rating.average_rating %}
                 <span class="stock-badge" style="background:rgba(234,179,8,0.1); color:#facc15; border-color:rgba(234,179,8,0.2);">
                     <i class="fa-solid fa-star"></i> {{ rating.average_rating }}/5 ({{ rating.total_reviews }} reviews)

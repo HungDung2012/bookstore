@@ -1,0 +1,95 @@
+[
+  {
+    "id": "segment:tech_reader",
+    "type": "segment",
+    "label": "Technology reader",
+    "metadata": {
+      "priority": "high",
+      "description": "Customers who prefer programming, software engineering, and data titles."
+    }
+  },
+  {
+    "id": "segment:literature_reader",
+    "type": "segment",
+    "label": "Literature reader",
+    "metadata": {
+      "priority": "high",
+      "description": "Customers who value fiction, classics, essays, and literary criticism."
+    }
+  },
+  {
+    "id": "segment:family_reader",
+    "type": "segment",
+    "label": "Family reader",
+    "metadata": {
+      "priority": "medium",
+      "description": "Households shopping for children's books and shared reading choices."
+    }
+  },
+  {
+    "id": "segment:bargain_hunter",
+    "type": "segment",
+    "label": "Bargain hunter",
+    "metadata": {
+      "priority": "medium",
+      "description": "Customers who respond to promotions, bundles, and shipping value."
+    }
+  },
+  {
+    "id": "segment:casual_buyer",
+    "type": "segment",
+    "label": "Casual buyer",
+    "metadata": {
+      "priority": "medium",
+      "description": "Occasional shoppers who need simple recommendations and clear policies."
+    }
+  },
+  {
+    "id": "category:programming",
+    "type": "category",
+    "label": "Programming",
+    "metadata": {
+      "department": "technology"
+    }
+  },
+  {
+    "id": "category:literature",
+    "type": "category",
+    "label": "Literature",
+    "metadata": {
+      "department": "arts"
+    }
+  },
+  {
+    "id": "category:children",
+    "type": "category",
+    "label": "Children",
+    "metadata": {
+      "department": "family"
+    }
+  },
+  {
+    "id": "service:payment",
+    "type": "service",
+    "label": "Payment service",
+    "metadata": {
+      "topic": "checkout"
+    }
+  },
+  {
+    "id": "service:shipping",
+    "type": "service",
+    "label": "Shipping service",
+    "metadata": {
+      "topic": "fulfillment"
+    }
+  },
+  {
+    "id": "policy:cancellation",
+    "type": "policy",
+    "label": "Cancellation policy",
+    "metadata": {
+      "topic": "orders"
+    }
+  }
+]
