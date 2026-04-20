@@ -401,7 +401,13 @@ class GatewayAdvisorTests(TestCase):
         self.client = Client()
 
     @patch("app.views.requests.get")
-    def test_books_page_contains_ai_advisor_launcher(self, get_mock):
+    def test_books_page_contains_customer_only_advisor_shell_without_sync_profile_fetch(self, get_mock):
+        session = self.client.session
+        session["token"] = "demo-token"
+        session["user"] = {"id": 3, "username": "alice", "role": "customer"}
+        session.save()
+        self.client.cookies[settings.SESSION_COOKIE_NAME] = session.session_key
+
         books_response = Mock(status_code=200)
         books_response.json.return_value = []
         get_mock.return_value = books_response
@@ -410,7 +416,77 @@ class GatewayAdvisorTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "AI Book Advisor")
-        self.assertContains(response, "advisor-chat-launcher")
+        self.assertContains(response, "Book Concierge")
+        self.assertContains(response, "Shelf notes are loading in the background.")
+        self.assertContains(response, 'data-advisor-shelf="books"')
+        self.assertContains(response, "books-advisor-shelf-picks")
+        get_mock.assert_called_once_with("http://book-service:8000/books/", timeout=5)
+
+    @patch("app.views.requests.get")
+    def test_books_page_hides_advisor_ui_for_staff_users(self, get_mock):
+        session = self.client.session
+        session["token"] = "demo-token"
+        session["user"] = {"id": 2, "username": "staff", "role": "staff"}
+        session.save()
+        self.client.cookies[settings.SESSION_COOKIE_NAME] = session.session_key
+
+        books_response = Mock(status_code=200)
+        books_response.json.return_value = []
+        get_mock.return_value = books_response
+
+        response = self.client.get("/books/", secure=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "AI Book Advisor")
+        self.assertNotContains(response, "Book Concierge")
+        get_mock.assert_called_once_with("http://book-service:8000/books/", timeout=5)
+
+    @patch("app.views.requests.get")
+    def test_cart_page_contains_customer_only_advisor_shell_without_sync_profile_fetch(self, get_mock):
+        session = self.client.session
+        session["token"] = "demo-token"
+        session["user"] = {"id": 3, "username": "alice", "role": "customer"}
+        session.save()
+        self.client.cookies[settings.SESSION_COOKIE_NAME] = session.session_key
+
+        def fake_get(url, timeout=5, params=None):
+            response = Mock()
+            if url == "http://cart-service:8000/carts/3/":
+                response.status_code = 200
+                response.json.return_value = [{"id": 11, "book_id": 7, "quantity": 1}]
+                return response
+            if url == "http://book-service:8000/books/":
+                response.status_code = 200
+                response.json.return_value = [
+                    {"id": 7, "title": "Dune", "author": "Frank Herbert", "price": "19.99"},
+                ]
+                return response
+            raise AssertionError(f"Unexpected URL {url}")
+
+        get_mock.side_effect = fake_get
+
+        response = self.client.get("/cart/3/", secure=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "AI Book Advisor")
+        self.assertContains(response, "Book Concierge")
+        self.assertContains(response, "Shelf notes are loading in the background.")
+        self.assertContains(response, 'data-advisor-shelf="cart"')
+        self.assertContains(response, "cart-advisor-shelf-picks")
+        self.assertEqual(get_mock.call_count, 2)
+
+    @patch("app.views.requests.get")
+    def test_cart_page_blocks_other_users(self, get_mock):
+        session = self.client.session
+        session["token"] = "demo-token"
+        session["user"] = {"id": 2, "username": "staff", "role": "staff"}
+        session.save()
+        self.client.cookies[settings.SESSION_COOKIE_NAME] = session.session_key
+
+        response = self.client.get("/cart/3/", secure=True)
+
+        self.assertEqual(response.status_code, 403)
+        get_mock.assert_not_called()
 
     @patch("app.views.requests.post")
     def test_advisor_chat_proxy_returns_json(self, post_mock):

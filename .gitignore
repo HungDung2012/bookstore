@@ -16,3 +16,9 @@ ass05_04.02_dungch.pdf
 tutorial_assigment-05_assignment-06.pdf
 Assignment5_Technical_Report.docx
 DEPLOY_RENDER.md
+advisor-service/app/data/models/*
+!advisor-service/app/data/models/.gitkeep
+advisor-service/app/data/models/plots/
+advisor-service/app/data/training/*
+!advisor-service/app/data/training/.gitkeep
+advisor-service/app/data/knowledge_graph/import.cypher

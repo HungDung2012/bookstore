@@ -51,6 +51,31 @@ def _format_block(block):
     return f"- {title}: {text}"
 
 
+def _summarize_graph_facts(graph_facts):
+    statements = []
+    for fact in graph_facts or []:
+        if not isinstance(fact, dict):
+            continue
+        statement = str(fact.get("statement", "")).strip()
+        if statement:
+            statements.append(statement)
+    return statements
+
+
+def _summarize_graph_paths(graph_paths):
+    summaries = []
+    for path in graph_paths or []:
+        if not isinstance(path, dict):
+            continue
+        path_text = _format_path_text(path)
+        reason = str(path.get("reason", "")).strip()
+        if reason:
+            summaries.append(f"{path_text} ({reason})")
+        elif path_text:
+            summaries.append(path_text)
+    return summaries
+
+
 def build_chat_prompt(
     question,
     behavior_segment,
@@ -137,7 +162,16 @@ Answer in a concise and grounded way. Explain why the recommendations match the 
 """.strip()
 
 
-def build_fallback_answer(question, behavior_segment, recommended_books):
+def build_fallback_answer(
+    question,
+    behavior_segment,
+    recommended_books,
+    graph_facts=None,
+    graph_paths=None,
+):
+    graph_facts = graph_facts or []
+    graph_paths = graph_paths or []
+
     book_names = ", ".join(
         title
         for title in (
@@ -147,7 +181,19 @@ def build_fallback_answer(question, behavior_segment, recommended_books):
         )
         if title
     ) or "our featured catalog"
-    return (
-        f"Based on your behavior segment `{behavior_segment}`, I recommend starting with {book_names}. "
-        f"This matches your recent shopping pattern. For service questions, I will answer using the bookstore knowledge base."
-    )
+
+    parts = [
+        f"Based on your behavior segment `{behavior_segment}`, I recommend starting with {book_names}.",
+        "This matches your recent shopping pattern.",
+    ]
+
+    fact_summaries = _summarize_graph_facts(graph_facts)
+    if fact_summaries:
+        parts.append(f"Graph context: {'; '.join(fact_summaries[:2])}.")
+
+    path_summaries = _summarize_graph_paths(graph_paths)
+    if path_summaries:
+        parts.append(f"Graph link: {'; '.join(path_summaries[:2])}.")
+
+    parts.append("For service questions, I will answer using the bookstore knowledge base.")
+    return " ".join(parts)

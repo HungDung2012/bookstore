@@ -13,6 +13,45 @@
     {% endif %}
 </div>
 
+{% if advisor_panel %}
+<section class="glass-card advisor-shelf" data-advisor-shelf="books">
+    <div class="advisor-shelf-header">
+        <div>
+            <span class="advisor-shelf-kicker">
+                <i class="fa-solid fa-bookmark"></i>
+                Shelf Notes
+            </span>
+            <h2 id="books-advisor-shelf-title" class="advisor-shelf-title">Hand-picked by your bookstore guide</h2>
+            <p id="books-advisor-shelf-subtitle" class="advisor-shelf-copy">{{ advisor_panel.subtitle }}</p>
+        </div>
+        <div id="books-advisor-shelf-prompt" class="advisor-shelf-chip">
+            <i class="fa-solid fa-wand-magic-sparkles"></i>
+            {{ advisor_panel.prompt }}
+        </div>
+    </div>
+
+    <div id="books-advisor-shelf-picks" class="advisor-shelf-picks">
+        {% if advisor_panel.recommended_books %}
+            {% for book in advisor_panel.recommended_books|slice:":4" %}
+            <article class="advisor-shelf-pick">
+                <small>Pick {{ forloop.counter }}</small>
+                <strong>{{ book.title }}</strong>
+                <small>{{ book.author|default:"Curated from your shelf guide" }}</small>
+                {% if book.price %}
+                <div class="price-tag" style="display:inline-flex; width:auto; align-self:flex-start;">${{ book.price }}</div>
+                {% endif %}
+                {% if book.reason %}
+                <div class="advisor-shelf-reason">{{ book.reason }}</div>
+                {% endif %}
+            </article>
+            {% endfor %}
+        {% else %}
+            <p id="books-advisor-shelf-empty" class="advisor-shelf-empty">Log in to unlock personalized shelf picks from the bookstore concierge.</p>
+        {% endif %}
+    </div>
+</section>
+{% endif %}
+
 <div class="grid">
     {% for book in books %}
     <div class="glass-card">

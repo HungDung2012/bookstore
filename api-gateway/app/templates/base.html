@@ -396,16 +396,117 @@
             border-color: var(--primary);
         }
 
+        .advisor-shelf {
+            margin-bottom: 1.5rem;
+            border: 1px solid rgba(245, 158, 11, 0.18);
+            background:
+                linear-gradient(135deg, rgba(15, 23, 42, 0.82), rgba(30, 41, 59, 0.7)),
+                radial-gradient(circle at top right, rgba(245, 158, 11, 0.08), transparent 36%);
+        }
+
+        .advisor-shelf-header {
+            display: flex;
+            justify-content: space-between;
+            gap: 1rem;
+            align-items: flex-start;
+            margin-bottom: 1rem;
+        }
+
+        .advisor-shelf-kicker {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.32rem 0.7rem;
+            border-radius: 999px;
+            border: 1px solid rgba(245, 158, 11, 0.28);
+            background: rgba(245, 158, 11, 0.08);
+            color: #fbbf24;
+            font-size: 0.78rem;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+
+        .advisor-shelf-title {
+            margin-top: 0.7rem;
+            font-size: 1.45rem;
+            font-weight: 800;
+            color: var(--text-main);
+        }
+
+        .advisor-shelf-copy {
+            color: var(--text-muted);
+            max-width: 52rem;
+            line-height: 1.55;
+        }
+
+        .advisor-shelf-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            margin-top: 0.1rem;
+            padding: 0.45rem 0.75rem;
+            border-radius: 999px;
+            border: 1px solid rgba(96, 165, 250, 0.18);
+            background: rgba(59, 130, 246, 0.08);
+            color: #bfdbfe;
+            font-size: 0.82rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .advisor-shelf-picks {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 0.8rem;
+            margin-top: 1rem;
+        }
+
+        .advisor-shelf-pick {
+            border-radius: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(255, 255, 255, 0.04);
+            padding: 0.9rem 1rem;
+            min-height: 132px;
+            display: flex;
+            flex-direction: column;
+            gap: 0.45rem;
+        }
+
+        .advisor-shelf-pick strong {
+            color: var(--text-main);
+            font-size: 1rem;
+            line-height: 1.35;
+        }
+
+        .advisor-shelf-pick small {
+            color: var(--text-muted);
+            font-size: 0.82rem;
+            line-height: 1.45;
+        }
+
+        .advisor-shelf-reason {
+            margin-top: auto;
+            font-size: 0.8rem;
+            color: #f8fafc;
+            opacity: 0.86;
+        }
+
+        .advisor-shelf-empty {
+            color: var(--text-muted);
+            margin-top: 0.5rem;
+        }
+
         .advisor-chat-launcher {
             position: fixed;
             right: 1.5rem;
             bottom: 1.5rem;
             z-index: 140;
-            border: 1px solid rgba(96, 165, 250, 0.35);
-            background: linear-gradient(135deg, rgba(37, 99, 235, 0.95), rgba(139, 92, 246, 0.92));
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            background: linear-gradient(135deg, rgba(37, 99, 235, 0.94), rgba(245, 158, 11, 0.9));
             color: #fff;
             box-shadow: 0 16px 40px rgba(15, 23, 42, 0.45);
-            border-radius: 999px;
+            border-radius: 999px 999px 14px 999px;
             padding: 0.95rem 1.2rem;
             display: inline-flex;
             align-items: center;
@@ -429,8 +530,10 @@
             max-height: min(72vh, 640px);
             z-index: 145;
             border-radius: 22px;
-            border: 1px solid var(--card-border);
-            background: rgba(15, 23, 42, 0.92);
+            border: 1px solid rgba(245, 158, 11, 0.2);
+            background:
+                linear-gradient(180deg, rgba(15, 23, 42, 0.95), rgba(15, 23, 42, 0.92)),
+                radial-gradient(circle at top right, rgba(245, 158, 11, 0.08), transparent 36%);
             backdrop-filter: blur(20px);
             box-shadow: 0 24px 60px rgba(2, 6, 23, 0.55);
             display: flex;
@@ -449,7 +552,7 @@
             gap: 1rem;
             padding: 1.1rem 1.2rem 0.9rem;
             border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-            background: linear-gradient(180deg, rgba(59, 130, 246, 0.16), rgba(15, 23, 42, 0));
+            background: linear-gradient(180deg, rgba(245, 158, 11, 0.12), rgba(15, 23, 42, 0));
         }
 
         .advisor-chat-header strong {
@@ -461,6 +564,19 @@
             margin-top: 0.2rem;
             color: var(--text-muted);
             font-size: 0.85rem;
+        }
+
+        .advisor-chat-preview {
+            padding: 0.85rem 1.1rem 0.25rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.7rem;
+        }
+
+        .advisor-chat-summary {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
         }
 
         .advisor-chat-close {
@@ -494,9 +610,9 @@
 
         .advisor-chat-suggestions button {
             flex: 0 0 auto;
-            border: 1px solid rgba(96, 165, 250, 0.24);
-            background: rgba(59, 130, 246, 0.08);
-            color: #bfdbfe;
+            border: 1px solid rgba(245, 158, 11, 0.2);
+            background: rgba(245, 158, 11, 0.08);
+            color: #fde68a;
             padding: 0.55rem 0.8rem;
             border-radius: 999px;
             cursor: pointer;
@@ -525,7 +641,7 @@
 
         .advisor-message-user {
             align-self: flex-end;
-            background: linear-gradient(135deg, rgba(59, 130, 246, 0.95), rgba(37, 99, 235, 0.95));
+            background: linear-gradient(135deg, rgba(37, 99, 235, 0.95), rgba(245, 158, 11, 0.88));
             color: #eff6ff;
             border-bottom-right-radius: 6px;
         }
@@ -564,7 +680,7 @@
             border: none;
             border-radius: 14px;
             padding: 0.85rem 1rem;
-            background: linear-gradient(135deg, var(--primary), var(--accent));
+            background: linear-gradient(135deg, var(--primary), #d97706);
             color: #fff;
             font-weight: 700;
             cursor: pointer;
@@ -677,106 +793,8 @@
         {% endblock %}
     </main>
 
-    {% if not user or user.role == 'customer' %}
-    <button id="advisor-chat-launcher" class="advisor-chat-launcher" type="button">
-        <i class="fa-solid fa-robot"></i>
-        <span>AI Book Advisor</span>
-    </button>
-
-    <section id="advisor-chat-panel" class="advisor-chat-panel" hidden>
-        <div class="advisor-chat-header">
-            <div>
-                <strong>AI Book Advisor</strong>
-                <p>Personalized book and service consultation</p>
-            </div>
-            <button id="advisor-chat-close" class="advisor-chat-close" type="button" aria-label="Close advisor chat">
-                <i class="fa-solid fa-xmark"></i>
-            </button>
-        </div>
-        <div class="advisor-chat-suggestions">
-            <button type="button" data-question="Recommend books for me">Recommend books for me</button>
-            <button type="button" data-question="What type of books should I read?">What type of books should I read?</button>
-            <button type="button" data-question="What is your shipping policy?">What is your shipping policy?</button>
-        </div>
-        <div id="advisor-chat-messages" class="advisor-chat-messages">
-            <div class="advisor-message advisor-message-assistant">Ask about books, reading preferences, or store policies.</div>
-        </div>
-        <form id="advisor-chat-form" class="advisor-chat-form">
-            <input id="advisor-chat-input" class="advisor-chat-input" type="text" placeholder="Ask for book or service advice">
-            <button class="advisor-chat-submit" type="submit">Send</button>
-        </form>
-    </section>
-
-    <script>
-        const launcher = document.getElementById("advisor-chat-launcher");
-        const panel = document.getElementById("advisor-chat-panel");
-        const closeButton = document.getElementById("advisor-chat-close");
-        const form = document.getElementById("advisor-chat-form");
-        const input = document.getElementById("advisor-chat-input");
-        const messages = document.getElementById("advisor-chat-messages");
-
-        function appendMessage(role, text) {
-            if (!messages) return;
-            const element = document.createElement("div");
-            element.className = `advisor-message advisor-message-${role}`;
-            element.textContent = text;
-            messages.appendChild(element);
-            messages.scrollTop = messages.scrollHeight;
-            return element;
-        }
-
-        launcher?.addEventListener("click", () => {
-            panel.hidden = false;
-            input?.focus();
-        });
-
-        closeButton?.addEventListener("click", () => {
-            panel.hidden = true;
-        });
-
-        document.querySelectorAll(".advisor-chat-suggestions button").forEach((button) => {
-            button.addEventListener("click", () => {
-                if (!input || !form) return;
-                input.value = button.dataset.question || "";
-                if (typeof form.requestSubmit === "function") {
-                    form.requestSubmit();
-                } else {
-                    form.dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
-                }
-            });
-        });
-
-        form?.addEventListener("submit", async (event) => {
-            event.preventDefault();
-            const question = input?.value.trim() || "";
-            if (!question) return;
-
-            appendMessage("user", question);
-            const pending = appendMessage("assistant", "Thinking...");
-            input.value = "";
-
-            try {
-                const response = await fetch("/advisor/chat/", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ question }),
-                });
-
-                let data;
-                try {
-                    data = await response.json();
-                } catch (error) {
-                    data = { error: "Advisor unavailable." };
-                }
-
-                pending?.remove();
-                appendMessage("assistant", data.answer || data.error || "Advisor unavailable.");
-            } catch (error) {
-                pending?.remove();
-                appendMessage("assistant", "Advisor unavailable.");
-            }
-        });
-    </script>
+    {% if advisor_panel %}
+    {% include "partials/advisor_panel.html" %}
     {% endif %}
 </body>
 </html>

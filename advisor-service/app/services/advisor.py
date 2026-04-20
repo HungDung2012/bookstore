@@ -23,13 +23,49 @@ class AdvisorService:
         self.graph_retriever = GraphRetriever(self.graph_kb)
         self.rag_pipeline = HybridRAGPipeline(self.graph_retriever, self.text_retriever)
 
+    def _book_category(self, book):
+        try:
+            return int(book.get("category"))
+        except (TypeError, ValueError, AttributeError):
+            return None
+
+    def _book_price(self, book):
+        try:
+            return float(book.get("price"))
+        except (TypeError, ValueError, AttributeError):
+            return float("inf")
+
+    def _filter_books_by_categories(self, books, categories):
+        prioritized = []
+        remaining = []
+        for book in books or []:
+            category = self._book_category(book)
+            if category in categories:
+                prioritized.append(book)
+            else:
+                remaining.append(book)
+        prioritized.sort(key=lambda book: (categories.index(self._book_category(book)), self._book_price(book), str(book.get("title", ""))))
+        remaining.sort(key=lambda book: (self._book_price(book), str(book.get("title", ""))))
+        return [*prioritized, *remaining]
+
     def _pick_books(self, books, segment, limit=3):
-        if segment == "tech_reader":
-            filtered = [book for book in (books or []) if book.get("category") == 3]
-        elif segment == "literature_reader":
-            filtered = [book for book in (books or []) if book.get("category") == 5]
+        books = books or []
+        segment = str(segment or "").strip()
+        if segment == "impulse_buyer":
+            filtered = self._filter_books_by_categories(books, [3])
+        elif segment == "careful_researcher":
+            filtered = self._filter_books_by_categories(books, [5])
+        elif segment == "discount_hunter":
+            filtered = sorted(
+                books,
+                key=lambda book: (self._book_price(book), self._book_category(book) or 0, str(book.get("title", ""))),
+            )
+        elif segment == "loyal_reader":
+            filtered = self._filter_books_by_categories(books, [5, 3])
+        elif segment == "window_shopper":
+            filtered = self._filter_books_by_categories(books, [8, 5, 3, 7])
         else:
-            filtered = books or []
+            filtered = sorted(books, key=lambda book: (self._book_category(book) or 0, self._book_price(book), str(book.get("title", ""))))
         return filtered[:limit]
 
     def _call_llm(self, prompt):
@@ -75,13 +111,21 @@ class AdvisorService:
 
     def _build_feature_summary(self, features, prediction):
         behavior_segment = prediction.get("behavior_segment", "casual_buyer")
+        model_name = prediction.get("model_name", "unknown_model")
         orders = features.get("order_count", 0)
         reviews = features.get("review_count", 0)
         cart_items = features.get("cart_item_count", 0)
         summary = (
-            f"Predicted segment is {behavior_segment} from orders={orders}, "
+            f"Predicted segment is {behavior_segment} with {model_name} from orders={orders}, "
             f"reviews={reviews}, cart_items={cart_items}."
         )
+
+        sequence_summary = prediction.get("sequence_summary") or {}
+        if sequence_summary:
+            summary = (
+                f"{summary} Sequence length={sequence_summary.get('sequence_length', 0)}, "
+                f"encoder_available={sequence_summary.get('encoder_available', False)}."
+            )
 
         probabilities = prediction.get("probabilities") or {}
         if probabilities:
@@ -102,6 +146,16 @@ class AdvisorService:
             "sources": [],
             "graph_facts": [],
             "graph_paths": [],
+            "context_blocks": [],
+            "model_name": "fallback",
+            "sequence_summary": {
+                "model_name": "fallback",
+                "sequence_length": 0,
+                "feature_dim": 0,
+                "profile_fields": [],
+                "step_fields": [],
+                "encoder_available": False,
+            },
             "feature_summary": "Chat unavailable; using fallback behavior segment.",
         }
 
@@ -110,6 +164,19 @@ class AdvisorService:
             "behavior_segment": "casual_buyer",
             "probabilities": {},
             "recommended_books": [],
+            "sources": [],
+            "graph_facts": [],
+            "graph_paths": [],
+            "context_blocks": [],
+            "model_name": "fallback",
+            "sequence_summary": {
+                "model_name": "fallback",
+                "sequence_length": 0,
+                "feature_dim": 0,
+                "profile_fields": [],
+                "step_fields": [],
+                "encoder_available": False,
+            },
             "feature_summary": "Profile unavailable; using fallback behavior segment.",
         }
 
@@ -119,6 +186,8 @@ class AdvisorService:
 
             features, prediction = self._predict_behavior(profile, books, orders, reviews, cart_items)
             behavior_segment = prediction["behavior_segment"]
+            model_name = prediction.get("model_name", "unknown_model")
+            sequence_summary = prediction.get("sequence_summary") or {}
             recommended_books = self._pick_books(books, behavior_segment)
             retrieval = self.rag_pipeline.retrieve(question, behavior_segment=behavior_segment, top_k=3)
             sources = retrieval["text_sources"]
@@ -136,18 +205,29 @@ class AdvisorService:
                     question,
                     behavior_segment,
                     recommended_books,
+                    graph_facts=retrieval["graph_facts"],
+                    graph_paths=retrieval["graph_paths"],
                 )
             except Exception:
-                answer = build_fallback_answer(question, behavior_segment, recommended_books)
+                answer = build_fallback_answer(
+                    question,
+                    behavior_segment,
+                    recommended_books,
+                    graph_facts=retrieval["graph_facts"],
+                    graph_paths=retrieval["graph_paths"],
+                )
 
             return {
                 "answer": answer,
                 "behavior_segment": behavior_segment,
                 "probabilities": prediction.get("probabilities", {}),
                 "recommended_books": recommended_books,
+                "model_name": model_name,
+                "sequence_summary": sequence_summary,
                 "sources": sources,
                 "graph_facts": retrieval["graph_facts"],
                 "graph_paths": retrieval["graph_paths"],
+                "context_blocks": retrieval["context_blocks"],
                 "feature_summary": feature_summary,
             }
         except Exception:
@@ -163,8 +243,19 @@ class AdvisorService:
                 reviews,
                 cart_items,
             )
+            behavior_segment = prediction["behavior_segment"]
+            profile_question = f"Advice for {behavior_segment.replace('_', ' ')} readers"
+            retrieval = self.rag_pipeline.retrieve(
+                profile_question,
+                behavior_segment=behavior_segment,
+                top_k=3,
+            )
             prediction["feature_summary"] = self._build_feature_summary(features, prediction)
-            prediction["recommended_books"] = self._pick_books(books, prediction["behavior_segment"])
+            prediction["recommended_books"] = self._pick_books(books, behavior_segment)
+            prediction["sources"] = retrieval["text_sources"]
+            prediction["graph_facts"] = retrieval["graph_facts"]
+            prediction["graph_paths"] = retrieval["graph_paths"]
+            prediction["context_blocks"] = retrieval["context_blocks"]
             return prediction
         except Exception:
             return self._profile_fallback_payload()

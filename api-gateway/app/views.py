@@ -240,6 +240,133 @@ def _fetch_json_list(url, timeout=5):
     return payload if isinstance(payload, list) else []
 
 
+def _fetch_advisor_profile_payload(user_id):
+    try:
+        response = requests.get(f"{ADVISOR_SERVICE_URL}/advisor/profile/{user_id}/", timeout=3)
+    except requests.exceptions.RequestException:
+        return None, None, None
+
+    payload, status = _json_from_upstream(response, "Advisor service")
+    return _normalize_advisor_payload(payload), status, None
+
+
+def _fetch_advisor_chat_payload(question, user_id=None):
+    try:
+        response = requests.post(
+            f"{ADVISOR_SERVICE_URL}/advisor/chat/",
+            json={"question": question, "user_id": user_id},
+            timeout=15,
+        )
+    except requests.exceptions.RequestException:
+        return None, None, None
+
+    payload, status = _json_from_upstream(response, "Advisor service")
+    return _normalize_advisor_payload(payload), status, None
+
+
+def _advisor_chat_prompts(surface):
+    prompts = {
+        "books": [
+            "Recommend books for me",
+            "What should I read next?",
+            "Find something under $20",
+        ],
+        "cart": [
+            "What pairs with my cart?",
+            "Suggest a backup pick",
+            "Can you help trim my cart?",
+        ],
+    }
+    return prompts.get(surface, prompts["books"])
+
+
+def _merge_advisor_recommendations(recommended_books, catalog=None):
+    catalog_by_id = {
+        book.get("id"): book
+        for book in catalog or []
+        if isinstance(book, dict) and book.get("id") is not None
+    }
+
+    merged = []
+    for item in recommended_books or []:
+        if not isinstance(item, dict):
+            continue
+        book_id = item.get("id", item.get("book_id"))
+        catalog_book = catalog_by_id.get(book_id, {})
+        merged.append(
+            {
+                "id": book_id,
+                "title": item.get("title") or catalog_book.get("title") or "Suggested read",
+                "author": item.get("author") or catalog_book.get("author") or "",
+                "price": item.get("price") or catalog_book.get("price") or "",
+                "reason": item.get("reason") or item.get("why") or item.get("note") or "",
+            }
+        )
+        if len(merged) == 4:
+            break
+
+    return merged
+
+
+def _build_advisor_panel_context(user, surface, catalog=None, fetch_profile=True):
+    panel = {
+        "enabled": True,
+        "surface": surface,
+        "title": "Book Concierge",
+        "subtitle": "A bookstore-style guide for reading picks, cart pairing, and quick help.",
+        "prompt": "Ask for a reading match, a cart pairing, or a store policy tip.",
+        "chat_prompts": _advisor_chat_prompts(surface),
+        "recommended_books": [],
+        "behavior_segment": None,
+        "behavior_segment_label": None,
+        "probabilities": {},
+        "sources": [],
+        "graph_facts": [],
+        "graph_paths": [],
+        "authenticated": bool(user),
+    }
+
+    if not user:
+        panel["subtitle"] = "Sign in to unlock personal shelf notes and guided recommendations."
+        panel["prompt"] = "Browse the catalog or log in to ask for personalized shelf notes."
+        return {"advisor_panel": panel}
+
+    if not fetch_profile:
+        panel["subtitle"] = "Shelf notes are loading in the background."
+        panel["prompt"] = "Open the concierge to load your personalized shelf notes."
+        panel["load_profile"] = True
+        panel["profile_url"] = "/advisor/profile/"
+        return {"advisor_panel": panel}
+
+    profile, status, _ = _fetch_advisor_profile_payload(user["id"])
+    if profile and status == 200:
+        panel["behavior_segment"] = profile.get("behavior_segment")
+        panel["behavior_segment_label"] = (
+            str(panel["behavior_segment"]).replace("_", " ").title()
+            if panel["behavior_segment"]
+            else None
+        )
+        panel["probabilities"] = profile.get("probabilities") or {}
+        panel["sources"] = profile.get("sources") or []
+        panel["graph_facts"] = profile.get("graph_facts") or []
+        panel["graph_paths"] = profile.get("graph_paths") or []
+        panel["recommended_books"] = _merge_advisor_recommendations(profile.get("recommended_books"), catalog)
+
+        if panel["behavior_segment"]:
+            segment_label = panel["behavior_segment_label"] or panel["behavior_segment"].replace("_", " ")
+            panel["subtitle"] = f"Your shelf guide reads you as a {segment_label}."
+        if panel["recommended_books"]:
+            first_pick = panel["recommended_books"][0]["title"]
+            panel["prompt"] = f"Start with {first_pick}, or ask for a wider reading lane."
+        elif panel["behavior_segment"]:
+            panel["prompt"] = f"Ask for more books in your {panel['behavior_segment'].replace('_', ' ')} lane."
+    else:
+        panel["subtitle"] = "The concierge is ready, but personalized shelf notes are unavailable right now."
+        panel["prompt"] = "Ask for general book suggestions or store help."
+
+    return {"advisor_panel": panel}
+
+
 def _normalize_filter_value(value):
     return (value or "").strip().lower()
 
@@ -522,6 +649,8 @@ def role_dashboard_view(request, role):
             return render(request, "admin_users.html", _create_admin_users_context(request, user))
         if section == "products":
             return render(request, "admin_products.html", _create_admin_products_context(request, user))
+    elif role == "customer":
+        context.update(_build_advisor_panel_context(user, "dashboard", fetch_profile=False))
 
     return render(
         request,
@@ -555,7 +684,10 @@ def book_list(request):
                 pass
     except requests.exceptions.RequestException:
         books = []
-    return render(request, "books.html", {"books": books, "user": user})
+    context = {"books": books, "user": user}
+    if user and user.get("role") == "customer":
+        context.update(_build_advisor_panel_context(user, "books", books, fetch_profile=False))
+    return render(request, "books.html", context)
 
 
 @csrf_exempt
@@ -784,6 +916,7 @@ def view_cart(request, customer_id):
     if response:
         return response
 
+    catalog_books = []
     try:
         cart_resp = requests.get(f"{CART_SERVICE_URL}/carts/{customer_id}/", timeout=5)
         cart_resp.raise_for_status()
@@ -791,7 +924,8 @@ def view_cart(request, customer_id):
         try:
             book_resp = requests.get(f"{BOOK_SERVICE_URL}/books/", timeout=5)
             if book_resp.status_code == 200:
-                books = {book["id"]: book for book in book_resp.json()}
+                catalog_books = book_resp.json()
+                books = {book["id"]: book for book in catalog_books}
                 for item in items:
                     book_id = item.get("book_id")
                     if book_id in books:
@@ -802,7 +936,10 @@ def view_cart(request, customer_id):
     except requests.exceptions.RequestException:
         items = []
 
-    return render(request, "cart.html", {"items": items, "customer_id": customer_id, "user": user})
+    context = {"items": items, "customer_id": customer_id, "user": user}
+    if user and user.get("role") == "customer":
+        context.update(_build_advisor_panel_context(user, "cart", catalog_books, fetch_profile=False))
+    return render(request, "cart.html", context)
 
 
 def _checkout_context_for_user(user):
@@ -1244,13 +1381,10 @@ def advisor_chat(request):
         "question": body.get("question", ""),
         "user_id": user["id"] if user else None,
     }
-    try:
-        response = requests.post(f"{ADVISOR_SERVICE_URL}/advisor/chat/", json=payload, timeout=15)
-        payload, status = _json_from_upstream(response, "Advisor service")
-        payload = _normalize_advisor_payload(payload)
-        return JsonResponse(payload, status=status, safe=isinstance(payload, dict))
-    except requests.exceptions.RequestException as exc:
-        return JsonResponse({"error": f"Advisor service unavailable: {exc}"}, status=503)
+    advisor_payload, status, _ = _fetch_advisor_chat_payload(payload["question"], payload["user_id"])
+    if advisor_payload is None and status is None:
+        return JsonResponse({"error": "Advisor service unavailable"}, status=503)
+    return JsonResponse(advisor_payload, status=status, safe=isinstance(advisor_payload, dict))
 
 
 def advisor_profile(request):
@@ -1258,10 +1392,7 @@ def advisor_profile(request):
     if not user:
         return JsonResponse({"error": "Authentication required"}, status=401)
 
-    try:
-        response = requests.get(f"{ADVISOR_SERVICE_URL}/advisor/profile/{user['id']}/", timeout=10)
-        payload, status = _json_from_upstream(response, "Advisor service")
-        payload = _normalize_advisor_payload(payload)
-        return JsonResponse(payload, status=status, safe=isinstance(payload, dict))
-    except requests.exceptions.RequestException as exc:
-        return JsonResponse({"error": f"Advisor service unavailable: {exc}"}, status=503)
+    advisor_payload, status, _ = _fetch_advisor_profile_payload(user["id"])
+    if advisor_payload is None and status is None:
+        return JsonResponse({"error": "Advisor service unavailable"}, status=503)
+    return JsonResponse(advisor_payload, status=status, safe=isinstance(advisor_payload, dict))

@@ -1,5 +1,7 @@
 import re
 
+from .graph_kb import GraphKnowledgeBase, Neo4jGraphService
+
 
 class GraphRetriever:
     STOPWORDS = {
@@ -50,8 +52,31 @@ class GraphRetriever:
         "cancellation": {"cancellation", "cancel", "returns", "return", "refund", "refunds", "policy"},
     }
 
-    def __init__(self, graph):
+    def __init__(self, graph, neo4j_service=None):
         self.graph = graph
+        self.neo4j_service = neo4j_service if neo4j_service is not None else Neo4jGraphService.from_env()
+
+    def _resolved_graph(self):
+        if not self.neo4j_service:
+            return self.graph
+        availability = getattr(self.neo4j_service, "is_available", None)
+        if availability is False:
+            return self.graph
+
+        try:
+            graph_payload = self.neo4j_service.query_graph_data()
+        except Exception:
+            return self.graph
+
+        if not graph_payload:
+            return self.graph
+        if not graph_payload.get("nodes") and not graph_payload.get("facts"):
+            return self.graph
+
+        try:
+            return GraphKnowledgeBase.from_payload(graph_payload)
+        except Exception:
+            return self.graph
 
     def _tokenize(self, value):
         normalized = (value or "").lower().replace("’", "'").replace("`", "'")
@@ -70,8 +95,8 @@ class GraphRetriever:
         metadata_text = " ".join(str(value) for value in (node.metadata or {}).values())
         return self._tokenize(f"{node.id} {node.type} {node.label} {metadata_text}")
 
-    def _edge_between(self, source, target):
-        for edge in self.graph.edges_for_node(source)["outgoing"]:
+    def _edge_between(self, graph, source, target):
+        for edge in graph.edges_for_node(source)["outgoing"]:
             if edge.target == target:
                 return edge
         return None
@@ -93,7 +118,7 @@ class GraphRetriever:
             keywords = set()
         return sorted(question_tokens & keywords)
 
-    def _score_node(self, question_tokens, behavior_segment, node):
+    def _score_node(self, graph, question_tokens, behavior_segment, node):
         score = 0.0
         reasons = []
         segment_node_id = self._segment_node_id(behavior_segment)
@@ -108,7 +133,7 @@ class GraphRetriever:
             reasons.append(f"behavior segment match: {behavior_segment}")
 
         if segment_node_id:
-            edge = self._edge_between(segment_node_id, node.id)
+            edge = self._edge_between(graph, segment_node_id, node.id)
             if edge:
                 score += 2.0 + float(edge.weight)
                 reasons.append(f"direct graph link: {edge.relation}")
@@ -142,8 +167,8 @@ class GraphRetriever:
             "reasons": list(reasons) + ([f"fact overlap: {', '.join(fact_overlap)}"] if fact_overlap else []),
         }
 
-    def _build_direct_path(self, segment_node_id, target_node_id, node_score, reasons):
-        edge = self._edge_between(segment_node_id, target_node_id)
+    def _build_direct_path(self, graph, segment_node_id, target_node_id, node_score, reasons):
+        edge = self._edge_between(graph, segment_node_id, target_node_id)
         if not edge:
             return None
         return {
@@ -153,19 +178,19 @@ class GraphRetriever:
             "reason": "; ".join(reasons) if reasons else edge.relation,
         }
 
-    def _build_two_hop_paths(self, segment_node_id, node, node_score, question_tokens, reasons):
+    def _build_two_hop_paths(self, graph, segment_node_id, node, node_score, question_tokens, reasons):
         paths = []
         if node.type != "category":
             return paths
 
-        segment_edge = self._edge_between(segment_node_id, node.id)
+        segment_edge = self._edge_between(graph, segment_node_id, node.id)
         if not segment_edge:
             return paths
 
-        for edge in self.graph.edges_for_node(node.id)["outgoing"]:
-            if edge.target not in self.graph.nodes:
+        for edge in graph.edges_for_node(node.id)["outgoing"]:
+            if edge.target not in graph.nodes:
                 continue
-            target_node = self.graph.nodes[edge.target]
+            target_node = graph.nodes[edge.target]
             target_hits = self._type_keyword_hits(target_node, question_tokens)
             if target_node.type not in {"service", "policy"}:
                 continue
@@ -183,13 +208,14 @@ class GraphRetriever:
         return paths
 
     def search(self, question, behavior_segment, top_k=5):
+        graph = self._resolved_graph()
         question_tokens = self._tokenize(question)
         if not question_tokens and not behavior_segment:
             return {"facts": [], "paths": []}
 
         scored_nodes = []
-        for node in self.graph.nodes.values():
-            score, reasons = self._score_node(question_tokens, behavior_segment, node)
+        for node in graph.nodes.values():
+            score, reasons = self._score_node(graph, question_tokens, behavior_segment, node)
             if score > 0:
                 scored_nodes.append((score, node, reasons))
 
@@ -198,19 +224,19 @@ class GraphRetriever:
 
         ranked_facts = []
         for score, node, reasons in ranked_nodes:
-            for fact in self.graph.facts_for_node(node.id):
+            for fact in graph.facts_for_node(node.id):
                 ranked_facts.append(self._build_fact_result(fact, score, question_tokens, reasons))
 
         ranked_facts.sort(key=lambda item: (-item["score"], item["node_id"], item["id"]))
 
         ranked_paths = []
         segment_node_id = self._segment_node_id(behavior_segment)
-        if segment_node_id and segment_node_id in self.graph.nodes:
+        if segment_node_id and segment_node_id in graph.nodes:
             for score, node, reasons in ranked_nodes:
-                direct_path = self._build_direct_path(segment_node_id, node.id, score, reasons)
+                direct_path = self._build_direct_path(graph, segment_node_id, node.id, score, reasons)
                 if direct_path:
                     ranked_paths.append(direct_path)
-                ranked_paths.extend(self._build_two_hop_paths(segment_node_id, node, score, question_tokens, reasons))
+                ranked_paths.extend(self._build_two_hop_paths(graph, segment_node_id, node, score, question_tokens, reasons))
 
         # Deduplicate paths while preserving score order.
         unique_paths = []

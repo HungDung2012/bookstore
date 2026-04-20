@@ -1,51 +1,78 @@
+import json
 import csv
 from pathlib import Path
 
 from django.core.management.base import BaseCommand
 
-from app.services.behavior_dataset import BehaviorDatasetSchema
-from app.services.clients import UpstreamClient
-from app.services.features import build_behavior_features, infer_behavior_label
+from app.services.behavior_dataset import (
+    BehaviorSequenceSchema,
+    generate_behavior_sequence_rows,
+)
 
-OUTPUT_PATH = Path(__file__).resolve().parents[2] / "data" / "training" / "behavior_dataset.csv"
+OUTPUT_PATH = Path(__file__).resolve().parents[2] / "data" / "training" / "data_user500.csv"
+USER_COUNT = 500
+SAMPLE_COUNT = 20
+SEQUENCE_LENGTH = 8
+SEQUENCE_SEED = 500
+
+
+def _write_csv(path, fieldnames, rows):
+    with path.open("w", newline="", encoding="utf-8") as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
+
+
+def _build_metadata(schema, output_path, sample_path, metadata_path, rows, sample_rows):
+    return {
+        **schema.to_metadata(),
+        "dataset_file": output_path.name,
+        "sample_file": sample_path.name,
+        "metadata_file": metadata_path.name,
+        "user_count": len(rows),
+        "sample_count": len(sample_rows),
+        "seed": SEQUENCE_SEED,
+    }
 
 
 class Command(BaseCommand):
-    help = "Prepare behavior training data from upstream microservices."
+    help = "Prepare synthetic behavior sequence training data."
 
     def handle(self, *args, **options):
-        client = UpstreamClient()
-        try:
-            books = client.get_books()
-        except Exception as exc:
-            self.stdout.write(self.style.WARNING(f"Skipping export: failed to load books ({exc})"))
-            return
-
         OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-        rows = []
-        for user_id in range(1, 21):
-            try:
-                profile = client.get_user(user_id)
-                orders = client.get_orders(user_id)
-                reviews = client.get_reviews(user_id)
-                cart_items = client.get_cart(user_id)
-            except Exception as exc:
-                self.stdout.write(self.style.WARNING(f"Skipping user {user_id}: {exc}"))
-                continue
-
-            features = build_behavior_features(profile, books, orders, reviews, cart_items)
-            rows.append({**features, "label": infer_behavior_label(features)})
+        rows = generate_behavior_sequence_rows(
+            user_count=USER_COUNT,
+            step_count=SEQUENCE_LENGTH,
+            seed=SEQUENCE_SEED,
+        )
 
         if not rows:
             self.stdout.write(self.style.WARNING("No rows generated"))
             return
 
-        schema = BehaviorDatasetSchema.from_rows(rows)
-        with OUTPUT_PATH.open("w", newline="", encoding="utf-8") as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=schema.export_fieldnames)
-            writer.writeheader()
-            for row in rows:
-                writer.writerow(schema.build_record(row, row["label"]))
+        schema = BehaviorSequenceSchema.from_rows(rows)
+        sample_rows = rows[:SAMPLE_COUNT]
+        sample_path = OUTPUT_PATH.with_name(f"{OUTPUT_PATH.stem}_sample20{OUTPUT_PATH.suffix}")
+        metadata_path = OUTPUT_PATH.with_name(f"{OUTPUT_PATH.stem}_metadata.json")
 
-        self.stdout.write(self.style.SUCCESS(f"Wrote {len(rows)} rows to {OUTPUT_PATH}"))
+        _write_csv(
+            OUTPUT_PATH,
+            schema.export_fieldnames,
+            [schema.build_record(row, row["label"]) for row in rows],
+        )
+        _write_csv(
+            sample_path,
+            schema.export_fieldnames,
+            [schema.build_record(row, row["label"]) for row in sample_rows],
+        )
+
+        metadata = _build_metadata(schema, OUTPUT_PATH, sample_path, metadata_path, rows, sample_rows)
+        metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
+
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"Wrote {len(rows)} users to {OUTPUT_PATH}, {len(sample_rows)} users to {sample_path}, and metadata to {metadata_path}"
+            )
+        )

@@ -1,0 +1,347 @@
+<button id="advisor-chat-launcher" class="advisor-chat-launcher" type="button">
+    <i class="fa-solid fa-book-open-reader"></i>
+    <span>AI Book Advisor</span>
+</button>
+
+<section
+    id="advisor-chat-panel"
+    class="advisor-chat-panel"
+    data-shelf-surface="{{ advisor_panel.surface|default:'books' }}"
+    data-load-profile="{{ advisor_panel.load_profile|yesno:'true,false' }}"
+    data-profile-url="{{ advisor_panel.profile_url|default:'/advisor/profile/' }}"
+    hidden
+>
+    <div class="advisor-chat-header">
+        <div>
+            <span class="advisor-shelf-kicker">
+                <i class="fa-solid fa-bookmark"></i>
+                Shelf Guide
+            </span>
+            <strong id="advisor-panel-title">{{ advisor_panel.title|default:"Book Concierge" }}</strong>
+            <p id="advisor-panel-subtitle">{{ advisor_panel.subtitle|default:"A bookstore-style guide for reading picks and cart pairing." }}</p>
+        </div>
+        <button id="advisor-chat-close" class="advisor-chat-close" type="button" aria-label="Close advisor chat">
+            <i class="fa-solid fa-xmark"></i>
+        </button>
+    </div>
+
+    <div class="advisor-chat-preview">
+        <div class="advisor-chat-summary">
+            <span id="advisor-panel-lane" class="advisor-shelf-chip">
+                <i class="fa-solid fa-compass"></i>
+                {% if advisor_panel.behavior_segment %}
+                Reading lane: {{ advisor_panel.behavior_segment_label|default:advisor_panel.behavior_segment }}
+                {% elif advisor_panel.authenticated %}
+                Personalized shelf notes loading
+                {% else %}
+                Sign in for personal shelf notes
+                {% endif %}
+            </span>
+            <span id="advisor-panel-notes" class="advisor-shelf-chip">
+                <i class="fa-solid fa-braille"></i>
+                {{ advisor_panel.sources|length }} shelf notes
+            </span>
+        </div>
+
+        <div id="advisor-panel-prompt" class="advisor-shelf-copy">{{ advisor_panel.prompt|default:"Ask for a reading match, a cart pairing, or a store policy tip." }}</div>
+
+        <div id="advisor-panel-picks" class="advisor-shelf-picks">
+            {% if advisor_panel.recommended_books %}
+                {% for book in advisor_panel.recommended_books|slice:":3" %}
+                <article class="advisor-shelf-pick">
+                    <small>Curated pick {{ forloop.counter }}</small>
+                    <strong>{{ book.title }}</strong>
+                    <small>{{ book.author|default:"From the bookstore shelves" }}</small>
+                    {% if book.price %}
+                    <div class="price-tag" style="display:inline-flex; width:auto; align-self:flex-start;">${{ book.price }}</div>
+                    {% endif %}
+                    {% if book.reason %}
+                    <div class="advisor-shelf-reason">{{ book.reason }}</div>
+                    {% endif %}
+                </article>
+                {% endfor %}
+            {% else %}
+                <div class="advisor-shelf-empty" style="grid-column: 1 / -1;" id="advisor-panel-empty">
+                    Personalized picks will appear here after the shelf loads.
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="advisor-chat-suggestions">
+        {% for question in advisor_panel.chat_prompts %}
+        <button type="button" data-question="{{ question }}">{{ question }}</button>
+        {% endfor %}
+    </div>
+
+    <div id="advisor-chat-messages" class="advisor-chat-messages" aria-live="polite">
+        <div class="advisor-message advisor-message-assistant">
+            {{ advisor_panel.prompt|default:"Ask about books, reading preferences, or store policies." }}
+        </div>
+    </div>
+
+    <form id="advisor-chat-form" class="advisor-chat-form">
+        <input
+            id="advisor-chat-input"
+            class="advisor-chat-input"
+            type="text"
+            placeholder="Ask for a reading match or cart tip"
+            autocomplete="off"
+        >
+        <button class="advisor-chat-submit" type="submit">Send</button>
+    </form>
+</section>
+
+<script>
+    (() => {
+        const launcher = document.getElementById("advisor-chat-launcher");
+        const panel = document.getElementById("advisor-chat-panel");
+        const closeButton = document.getElementById("advisor-chat-close");
+        const form = document.getElementById("advisor-chat-form");
+        const input = document.getElementById("advisor-chat-input");
+        const messages = document.getElementById("advisor-chat-messages");
+        const panelTitle = document.getElementById("advisor-panel-title");
+        const panelSubtitle = document.getElementById("advisor-panel-subtitle");
+        const panelLane = document.getElementById("advisor-panel-lane");
+        const panelNotes = document.getElementById("advisor-panel-notes");
+        const panelPrompt = document.getElementById("advisor-panel-prompt");
+        const panelPicks = document.getElementById("advisor-panel-picks");
+        const shelfSurface = panel.dataset.shelfSurface || "books";
+        const inlineShelf = {
+            title: document.getElementById(`${shelfSurface}-advisor-shelf-title`),
+            subtitle: document.getElementById(`${shelfSurface}-advisor-shelf-subtitle`),
+            prompt: document.getElementById(`${shelfSurface}-advisor-shelf-prompt`),
+            picks: document.getElementById(`${shelfSurface}-advisor-shelf-picks`),
+            empty: document.getElementById(`${shelfSurface}-advisor-shelf-empty`),
+        };
+
+        if (!launcher || !panel || !form || !input || !messages) {
+            return;
+        }
+
+        function createIconChip(iconClass, text) {
+            const chip = document.createElement("span");
+            chip.className = "advisor-shelf-chip";
+
+            const icon = document.createElement("i");
+            icon.className = iconClass;
+            chip.appendChild(icon);
+            chip.appendChild(document.createTextNode(` ${text}`));
+            return chip;
+        }
+
+        function createPickCard(book, index, label) {
+            const card = document.createElement("article");
+            card.className = "advisor-shelf-pick";
+
+            const counter = document.createElement("small");
+            counter.textContent = `${label} ${index + 1}`;
+
+            const title = document.createElement("strong");
+            title.textContent = book.title || "Suggested read";
+
+            const author = document.createElement("small");
+            author.textContent = book.author || "From the bookstore shelves";
+
+            card.appendChild(counter);
+            card.appendChild(title);
+            card.appendChild(author);
+
+            if (book.price) {
+                const price = document.createElement("div");
+                price.className = "price-tag";
+                price.style.display = "inline-flex";
+                price.style.width = "auto";
+                price.style.alignSelf = "flex-start";
+                price.textContent = `$${book.price}`;
+                card.appendChild(price);
+            }
+
+            if (book.reason) {
+                const reason = document.createElement("div");
+                reason.className = "advisor-shelf-reason";
+                reason.textContent = book.reason;
+                card.appendChild(reason);
+            }
+
+            return card;
+        }
+
+        function setShelfMessage(message) {
+            if (panelPrompt) {
+                panelPrompt.textContent = message;
+            }
+            if (panelPicks) {
+                panelPicks.replaceChildren();
+                const empty = document.createElement("div");
+                empty.className = "advisor-shelf-empty";
+                empty.style.gridColumn = "1 / -1";
+                empty.textContent = message;
+                panelPicks.appendChild(empty);
+            }
+            if (inlineShelf.prompt) {
+                inlineShelf.prompt.textContent = message;
+            }
+            if (inlineShelf.picks) {
+                inlineShelf.picks.replaceChildren();
+                const empty = document.createElement("div");
+                empty.className = "advisor-shelf-empty";
+                empty.style.gridColumn = "1 / -1";
+                empty.textContent = message;
+                inlineShelf.picks.appendChild(empty);
+            }
+        }
+
+        function renderShelf(data) {
+            const behaviorSegment = data.behavior_segment_label || data.behavior_segment || "";
+            if (panelTitle && data.title) {
+                panelTitle.textContent = data.title;
+            }
+            if (panelSubtitle && data.subtitle) {
+                panelSubtitle.textContent = data.subtitle;
+            }
+            if (panelLane) {
+                panelLane.replaceChildren(
+                    ...(
+                        behaviorSegment
+                            ? [createIconChip("fa-solid fa-compass", `Reading lane: ${behaviorSegment}`)]
+                            : [createIconChip("fa-solid fa-compass", "Personalized shelf notes")]
+                    )
+                );
+            }
+            if (panelNotes) {
+                const sourceCount = Array.isArray(data.sources) ? data.sources.length : 0;
+                panelNotes.replaceChildren(createIconChip("fa-solid fa-braille", `${sourceCount} shelf notes`));
+            }
+            if (panelPrompt && data.prompt) {
+                panelPrompt.textContent = data.prompt;
+            }
+            if (panelPicks) {
+                const picks = Array.isArray(data.recommended_books) ? data.recommended_books.slice(0, 3) : [];
+                if (picks.length) {
+                    panelPicks.replaceChildren(...picks.map((book, index) => createPickCard(book, index, "Curated pick")));
+                } else {
+                    setShelfMessage("Personalized picks are unavailable right now.");
+                }
+            }
+
+            if (inlineShelf.title && data.title) {
+                inlineShelf.title.textContent = data.title;
+            }
+            if (inlineShelf.subtitle && data.subtitle) {
+                inlineShelf.subtitle.textContent = data.subtitle;
+            }
+            if (inlineShelf.prompt && data.prompt) {
+                inlineShelf.prompt.textContent = data.prompt;
+            }
+            if (inlineShelf.empty) {
+                inlineShelf.empty.remove();
+            }
+            if (inlineShelf.picks) {
+                const picks = Array.isArray(data.recommended_books) ? data.recommended_books.slice(0, 4) : [];
+                if (picks.length) {
+                    inlineShelf.picks.replaceChildren(...picks.map((book, index) => createPickCard(book, index, shelfSurface === "cart" ? "Match" : "Pick")));
+                } else {
+                    inlineShelf.picks.replaceChildren();
+                    const empty = document.createElement("p");
+                    empty.className = "advisor-shelf-empty";
+                    empty.id = `${shelfSurface}-advisor-shelf-empty`;
+                    empty.textContent = shelfSurface === "cart"
+                        ? "Log in to unlock cart-aware recommendations from the bookstore concierge."
+                        : "Log in to unlock personalized shelf picks from the bookstore concierge.";
+                    inlineShelf.picks.appendChild(empty);
+                }
+            }
+        }
+
+        async function loadShelfProfile() {
+            if (panel.dataset.loadProfile !== "true") {
+                return;
+            }
+
+            const profileUrl = panel.dataset.profileUrl || "/advisor/profile/";
+            const controller = new AbortController();
+            const timeout = window.setTimeout(() => controller.abort(), 2500);
+
+            try {
+                const response = await fetch(profileUrl, {
+                    method: "GET",
+                    signal: controller.signal,
+                    headers: { "Accept": "application/json" },
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    renderShelf(data);
+                } else {
+                    setShelfMessage(data.error || "Personalized shelf notes are unavailable right now.");
+                }
+            } catch (error) {
+                setShelfMessage("Personalized shelf notes are unavailable right now.");
+            } finally {
+                window.clearTimeout(timeout);
+            }
+        }
+
+        function appendMessage(role, text) {
+            const element = document.createElement("div");
+            element.className = `advisor-message advisor-message-${role}`;
+            element.textContent = text;
+            messages.appendChild(element);
+            messages.scrollTop = messages.scrollHeight;
+            return element;
+        }
+
+        launcher.addEventListener("click", () => {
+            panel.hidden = false;
+            input.focus();
+        });
+
+        closeButton?.addEventListener("click", () => {
+            panel.hidden = true;
+        });
+
+        loadShelfProfile();
+
+        document.querySelectorAll(".advisor-chat-suggestions button").forEach((button) => {
+            button.addEventListener("click", () => {
+                input.value = button.dataset.question || "";
+                if (typeof form.requestSubmit === "function") {
+                    form.requestSubmit();
+                } else {
+                    form.dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
+                }
+            });
+        });
+
+        form.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            const question = input.value.trim();
+            if (!question) return;
+
+            appendMessage("user", question);
+            const pending = appendMessage("assistant", "Reading the shelf...");
+            input.value = "";
+
+            try {
+                const response = await fetch("/advisor/chat/", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ question }),
+                });
+
+                let data;
+                try {
+                    data = await response.json();
+                } catch (error) {
+                    data = { error: "Advisor unavailable." };
+                }
+
+                pending.remove();
+                appendMessage("assistant", data.answer || data.error || data.detail || "Advisor unavailable.");
+            } catch (error) {
+                pending.remove();
+                appendMessage("assistant", "Advisor unavailable.");
+            }
+        });
+    })();
+</script>

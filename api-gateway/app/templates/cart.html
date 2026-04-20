@@ -8,6 +8,45 @@
     <p>Review and manage your selected items</p>
 </div>
 
+{% if advisor_panel %}
+<section class="glass-card advisor-shelf" data-advisor-shelf="cart">
+    <div class="advisor-shelf-header">
+        <div>
+            <span class="advisor-shelf-kicker">
+                <i class="fa-solid fa-book-bookmark"></i>
+                Cart Concierge
+            </span>
+            <h2 id="cart-advisor-shelf-title" class="advisor-shelf-title">Books that pair with what's already in your cart</h2>
+            <p id="cart-advisor-shelf-subtitle" class="advisor-shelf-copy">{{ advisor_panel.subtitle }}</p>
+        </div>
+        <div id="cart-advisor-shelf-prompt" class="advisor-shelf-chip">
+            <i class="fa-solid fa-basket-shopping"></i>
+            {{ advisor_panel.prompt }}
+        </div>
+    </div>
+
+    <div id="cart-advisor-shelf-picks" class="advisor-shelf-picks">
+        {% if advisor_panel.recommended_books %}
+            {% for book in advisor_panel.recommended_books|slice:":4" %}
+            <article class="advisor-shelf-pick">
+                <small>Match {{ forloop.counter }}</small>
+                <strong>{{ book.title }}</strong>
+                <small>{{ book.author|default:"Suggested by your cart guide" }}</small>
+                {% if book.price %}
+                <div class="price-tag" style="display:inline-flex; width:auto; align-self:flex-start;">${{ book.price }}</div>
+                {% endif %}
+                {% if book.reason %}
+                <div class="advisor-shelf-reason">{{ book.reason }}</div>
+                {% endif %}
+            </article>
+            {% endfor %}
+        {% else %}
+            <p id="cart-advisor-shelf-empty" class="advisor-shelf-empty">Log in to unlock cart-aware recommendations from the bookstore concierge.</p>
+        {% endif %}
+    </div>
+</section>
+{% endif %}
+
 <div class="grid">
     {% for item in items %}
     <div class="glass-card">
