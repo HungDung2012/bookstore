@@ -24,7 +24,7 @@ from app.services.graph_kb import GraphEdge, GraphFact, GraphKnowledgeBase, Grap
 from app.services.graph_retriever import GraphRetriever
 from app.services.knowledge_base import KnowledgeBaseService
 from app.services.rag_pipeline import HybridRAGPipeline
-from app.services.prompting import build_fallback_answer
+from app.services.prompting import build_chat_prompt, build_fallback_answer
 from app.services.text_retriever import TextRetriever
 
 
@@ -269,7 +269,7 @@ class AdvisorServiceOrchestrationTests(TestCase):
         self.assertEqual(result["sources"], [])
         self.assertEqual(result["graph_facts"], [])
         self.assertEqual(result["graph_paths"], [])
-        self.assertIn("our featured catalog", result["answer"])
+        self.assertIn("cac dau sach noi bat cua nha sach", result["answer"])
 
     def test_profile_returns_enriched_summary_and_probabilities(self):
         result = self.service.profile(user_id=1)
@@ -353,6 +353,41 @@ class RuntimeSequenceFeatureTests(TestCase):
         self.assertEqual(features["sequence_summary"]["source_counts"]["orders"], 1)
         self.assertEqual(features["sequence_summary"]["source_counts"]["reviews"], 1)
         self.assertEqual(features["sequence_summary"]["source_counts"]["cart_items"], 1)
+
+    def test_build_behavior_features_ignores_pending_orders_for_purchase_signals(self):
+        profile = {
+            "id": 42,
+            "age_group": "18-25",
+            "favorite_category": "technology",
+            "price_sensitivity": "high",
+            "membership_tier": "gold",
+        }
+        books = [
+            {"id": 1, "title": "Clean Code", "category": 3, "price": "29.99", "publisher": 9},
+            {"id": 2, "title": "Novel Study", "category": 5, "price": "19.99", "publisher": 10},
+        ]
+        orders = [
+            {
+                "id": 101,
+                "status": "pending",
+                "total_amount": 19.99,
+                "items": [{"book_id": 2, "quantity": 1}],
+            },
+            {
+                "id": 102,
+                "status": "paid",
+                "total_amount": 29.99,
+                "items": [{"book_id": 1, "quantity": 1}],
+            },
+        ]
+
+        features = build_behavior_features(profile, books, orders, reviews=[], cart_items=[])
+
+        self.assertEqual(features["order_count"], 1)
+        self.assertEqual(features["total_quantity"], 1)
+        self.assertEqual(features["total_spent"], 29.99)
+        self.assertEqual(features["category_3_count"], 1)
+        self.assertNotIn("category_5_count", features)
 
 
 class BehaviorDatasetSchemaTests(TestCase):
@@ -2224,7 +2259,7 @@ class HybridRAGPipelineTests(TestCase):
         self.assertIn("Text source:", prompt)
         self.assertIn("Clean Code", prompt)
         self.assertNotIn("Graph path: Graph path", prompt)
-        self.assertRegex(prompt, r"Graph path: [^\n]*tech reader[^\n]*-> [^\n]*")
+        self.assertIn("Answer in natural Vietnamese.", prompt)
 
     def test_fallback_answer_uses_graph_context_when_available(self):
         answer = build_fallback_answer(
@@ -2243,3 +2278,28 @@ class HybridRAGPipelineTests(TestCase):
 
         self.assertIn("Shipping updates matter for tech readers.", answer)
         self.assertIn("graph path to shipping guidance", answer)
+
+    def test_fallback_answer_is_localized_to_vietnamese_and_hides_internal_labels(self):
+        answer = build_fallback_answer(
+            question="hello",
+            behavior_segment="loyal_reader",
+            recommended_books=[{"title": "Gone Girl"}],
+            graph_facts=[{"statement": "Loyal readers revisit familiar categories."}],
+        )
+
+        self.assertNotIn("behavior segment", answer.lower())
+        self.assertNotIn("graph context", answer.lower())
+        self.assertIn("goi y", answer.lower())
+        self.assertIn("phu hop", answer.lower())
+
+
+class PromptLocalizationTests(TestCase):
+    def test_prompt_builder_instructs_the_llm_to_answer_in_vietnamese(self):
+        prompt = build_chat_prompt(
+            question="Xin chao",
+            behavior_segment="loyal_reader",
+            feature_summary="Khach hang co xu huong quay lai nhom sach quen thuoc.",
+            recommended_books=[{"title": "Gone Girl", "price": "14.99"}],
+        )
+
+        self.assertIn("Vietnamese", prompt)

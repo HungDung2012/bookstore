@@ -150,7 +150,7 @@ def build_chat_prompt(
         for book in recommended_books
     )
     return f"""
-You are an AI bookstore advisor.
+You are an AI bookstore advisor for a Vietnamese-speaking user.
 User question: {question}
 Behavior segment: {behavior_segment}
 Behavior explanation: {feature_summary}
@@ -158,7 +158,10 @@ Relevant context:
 {context_text}
 Suggested books:
 {books_text}
-Answer in a concise and grounded way. Explain why the recommendations match the user's behavior.
+Answer in natural Vietnamese.
+Do not mention internal labels like behavior_segment, loyal_reader, graph_context, graph fact, or graph path.
+If the user greets casually, reply with a friendly bookstore greeting before giving short, useful suggestions.
+Keep the answer concise, grounded, and helpful. Explain recommendations in user-friendly language.
 """.strip()
 
 
@@ -169,8 +172,11 @@ def build_fallback_answer(
     graph_facts=None,
     graph_paths=None,
 ):
+    del behavior_segment
     graph_facts = graph_facts or []
     graph_paths = graph_paths or []
+    normalized_question = str(question or "").strip().lower()
+    greeting_questions = {"hello", "hi", "hey", "xin chao", "chao"}
 
     book_names = ", ".join(
         title
@@ -180,20 +186,27 @@ def build_fallback_answer(
             if isinstance(book, dict)
         )
         if title
-    ) or "our featured catalog"
+    ) or "cac dau sach noi bat cua nha sach"
 
-    parts = [
-        f"Based on your behavior segment `{behavior_segment}`, I recommend starting with {book_names}.",
-        "This matches your recent shopping pattern.",
-    ]
+    if normalized_question in greeting_questions:
+        parts = [
+            "Xin chao, minh la tro ly nha sach AI.",
+            f"Neu ban muon bat dau nhanh, minh goi y ban xem thu {book_names}.",
+            "Cac goi y nay dua tren nhung gi ban dang quan tam gan day.",
+        ]
+    else:
+        parts = [
+            f"Minh goi y ban bat dau voi {book_names}.",
+            "Cac lua chon nay kha phu hop voi moi quan tam va nhip mua sam gan day cua ban.",
+        ]
 
     fact_summaries = _summarize_graph_facts(graph_facts)
     if fact_summaries:
-        parts.append(f"Graph context: {'; '.join(fact_summaries[:2])}.")
+        parts.append(f"Mot vai tin hieu noi bat minh thay la: {'; '.join(fact_summaries[:2])}.")
 
     path_summaries = _summarize_graph_paths(graph_paths)
     if path_summaries:
-        parts.append(f"Graph link: {'; '.join(path_summaries[:2])}.")
+        parts.append(f"Nhung ket noi lien quan nhat la: {'; '.join(path_summaries[:2])}.")
 
-    parts.append("For service questions, I will answer using the bookstore knowledge base.")
+    parts.append("Neu ban muon, minh co the goi y tiep theo kieu sach, muc gia hoac sach phu hop voi gio hang cua ban.")
     return " ".join(parts)

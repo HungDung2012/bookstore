@@ -3,6 +3,7 @@ from collections import Counter
 
 PROFILE_FIELDS = ("age_group", "favorite_category", "price_sensitivity", "membership_tier")
 SEQUENCE_LENGTH = 8
+PURCHASE_ORDER_STATUSES = {"paid", "shipping", "delivered"}
 SEQUENCE_BEHAVIORS = (
     "view_home",
     "search",
@@ -118,6 +119,17 @@ def _records_from_payload(payload):
     return []
 
 
+def _effective_orders(orders):
+    valid_orders = _records_from_payload(orders)
+    filtered = []
+    for order in valid_orders:
+        status = _normalize_text(order.get("status"))
+        if status and status not in PURCHASE_ORDER_STATUSES:
+            continue
+        filtered.append(order)
+    return filtered
+
+
 def _lookup_book(book_by_id, book_id):
     if book_id in book_by_id:
         return book_by_id[book_id]
@@ -200,7 +212,7 @@ def _build_sequence_summary(source_counts, steps):
 
 def _build_sequence_steps(profile, books, orders, reviews, cart_items):
     valid_books = _records_from_payload(books)
-    valid_orders = _records_from_payload(orders)
+    valid_orders = _effective_orders(orders)
     valid_reviews = _records_from_payload(reviews)
     valid_cart_items = _records_from_payload(cart_items)
 
@@ -362,7 +374,7 @@ def build_behavior_features(profile, books, orders, reviews, cart_items):
     publisher_counter = Counter()
     total_spent = 0.0
     total_quantity = 0
-    valid_orders = _records_from_payload(orders)
+    valid_orders = _effective_orders(orders)
     valid_reviews = _records_from_payload(reviews)
     valid_cart_items = _records_from_payload(cart_items)
 

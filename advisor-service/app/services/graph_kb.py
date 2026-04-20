@@ -679,7 +679,7 @@ UNWIND $nodes AS node
 MERGE (n:GraphNode {id: node.id})
 SET n.type = node.type,
     n.label = node.label,
-    n.metadata = node.metadata
+    n.metadata_json = node.metadata_json
 RETURN count(n) AS node_count
 """
 
@@ -690,7 +690,7 @@ MATCH (source:GraphNode {id: edge.source})
 MATCH (target:GraphNode {id: edge.target})
 MERGE (source)-[r:RELATED_TO {relation: edge.relation}]->(target)
 SET r.weight = edge.weight,
-    r.metadata = edge.metadata
+    r.metadata_json = edge.metadata_json
 RETURN count(r) AS edge_count
 """
 
@@ -701,7 +701,7 @@ MATCH (node:GraphNode {id: fact.node_id})
 MERGE (f:GraphFact {id: fact.id})
 SET f.relation = fact.relation,
     f.statement = fact.statement,
-    f.metadata = fact.metadata
+    f.metadata_json = fact.metadata_json
 MERGE (f)-[:DESCRIBES]->(node)
 RETURN count(f) AS fact_count
 """
@@ -709,7 +709,7 @@ RETURN count(f) AS fact_count
     NODE_FETCH_QUERY = """
 // graph nodes
 MATCH (n:GraphNode)
-RETURN n.id AS id, n.type AS type, n.label AS label, coalesce(n.metadata, {}) AS metadata
+RETURN n.id AS id, n.type AS type, n.label AS label, {} AS metadata
 ORDER BY n.id
 """
 
@@ -720,7 +720,7 @@ RETURN source.id AS source,
        target.id AS target,
        r.relation AS relation,
        coalesce(r.weight, 1.0) AS weight,
-       coalesce(r.metadata, {}) AS metadata
+       {} AS metadata
 ORDER BY source, target, relation
 """
 
@@ -731,7 +731,7 @@ RETURN f.id AS id,
        node.id AS node_id,
        f.relation AS relation,
        f.statement AS statement,
-       coalesce(f.metadata, {}) AS metadata
+       {} AS metadata
 ORDER BY node_id, id
 """
 
@@ -800,9 +800,20 @@ ORDER BY node_id, id
         if driver is None:
             return {"synced": False, "reason": "Neo4j connection is not configured."}
 
-        nodes = list(payload.get("nodes", []))
-        edges = list(payload.get("edges", []))
-        facts = list(payload.get("facts", []))
+        def _serialize_metadata(items):
+            serialized = []
+            for item in list(items):
+                record = dict(item)
+                metadata = record.pop("metadata", {})
+                if not isinstance(metadata, dict):
+                    metadata = {}
+                record["metadata_json"] = json.dumps(metadata, ensure_ascii=False, sort_keys=True)
+                serialized.append(record)
+            return serialized
+
+        nodes = _serialize_metadata(payload.get("nodes", []))
+        edges = _serialize_metadata(payload.get("edges", []))
+        facts = _serialize_metadata(payload.get("facts", []))
 
         def _first_count(result, key):
             if result is None:

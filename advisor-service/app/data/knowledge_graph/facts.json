@@ -1,83 +1,352 @@
 [
   {
-    "id": "fact-tech-reader-programming",
-    "node_id": "segment:tech_reader",
-    "relation": "prefers_category",
-    "statement": "Technology readers respond well to programming, software engineering, and data titles.",
+    "id": "fact-book-1",
     "metadata": {
-      "confidence": "high"
-    }
-  },
-  {
-    "id": "fact-tech-reader-payment",
-    "node_id": "segment:tech_reader",
-    "relation": "checkout_expectation",
-    "statement": "Technology readers value a fast checkout flow and clear payment confirmation.",
-    "metadata": {
+      "category": "programming",
       "confidence": "medium"
-    }
+    },
+    "node_id": "book:1",
+    "relation": "book_summary",
+    "statement": "The Lord of the Rings belongs to the programming catalog."
   },
   {
-    "id": "fact-literature-reader-shipping",
-    "node_id": "segment:literature_reader",
-    "relation": "fulfillment_expectation",
-    "statement": "Literature readers often want reliable shipping updates for print-heavy orders.",
+    "id": "fact-book-10",
     "metadata": {
+      "category": "programming",
       "confidence": "medium"
-    }
+    },
+    "node_id": "book:10",
+    "relation": "book_summary",
+    "statement": "Harry Potter and the Philosopher's Stone belongs to the programming catalog."
   },
   {
-    "id": "fact-family-reader-children",
-    "node_id": "segment:family_reader",
-    "relation": "prefers_category",
-    "statement": "Family readers commonly shop children's books, read-aloud titles, and classroom gifts.",
+    "id": "fact-book-11",
     "metadata": {
-      "confidence": "high"
-    }
-  },
-  {
-    "id": "fact-bargain-hunter-cancellation",
-    "node_id": "segment:bargain_hunter",
-    "relation": "policy_check",
-    "statement": "Bargain hunters often compare shipping costs and cancellation flexibility before purchase.",
-    "metadata": {
-      "confidence": "high"
-    }
-  },
-  {
-    "id": "fact-casual-buyer-payment",
-    "node_id": "segment:casual_buyer",
-    "relation": "checkout_need",
-    "statement": "Casual buyers need simple payment steps and minimal friction to complete an order.",
-    "metadata": {
-      "confidence": "high"
-    }
-  },
-  {
-    "id": "fact-category-programming",
-    "node_id": "category:programming",
-    "relation": "topic_summary",
-    "statement": "Programming books support skill growth in Python, web development, systems design, and data workflows.",
-    "metadata": {
+      "category": "programming",
       "confidence": "medium"
-    }
+    },
+    "node_id": "book:11",
+    "relation": "book_summary",
+    "statement": "The Name of the Wind belongs to the programming catalog."
   },
   {
-    "id": "fact-service-shipping",
-    "node_id": "service:shipping",
-    "relation": "service_summary",
-    "statement": "Shipping guidance should explain delivery windows, tracking, and regional handling times.",
+    "id": "fact-book-12",
     "metadata": {
+      "category": "programming",
       "confidence": "medium"
-    }
+    },
+    "node_id": "book:12",
+    "relation": "book_summary",
+    "statement": "A Game of Thrones belongs to the programming catalog."
   },
   {
-    "id": "fact-policy-cancellation",
-    "node_id": "policy:cancellation",
-    "relation": "policy_summary",
-    "statement": "Cancellation policy information should state timing, refund handling, and order status limits.",
+    "id": "fact-book-13",
     "metadata": {
+      "category": "literature",
       "confidence": "medium"
-    }
+    },
+    "node_id": "book:13",
+    "relation": "book_summary",
+    "statement": "And Then There Were None belongs to the literature catalog."
+  },
+  {
+    "id": "fact-book-14",
+    "metadata": {
+      "category": "literature",
+      "confidence": "medium"
+    },
+    "node_id": "book:14",
+    "relation": "book_summary",
+    "statement": "Gone Girl belongs to the literature catalog."
+  },
+  {
+    "id": "fact-book-15",
+    "metadata": {
+      "category": "4",
+      "confidence": "medium"
+    },
+    "node_id": "book:15",
+    "relation": "book_summary",
+    "statement": "Sapiens: A Brief History of Humankind belongs to the 4 catalog."
+  },
+  {
+    "id": "fact-book-16",
+    "metadata": {
+      "category": "4",
+      "confidence": "medium"
+    },
+    "node_id": "book:16",
+    "relation": "book_summary",
+    "statement": "A Brief History of Time belongs to the 4 catalog."
+  },
+  {
+    "id": "fact-book-17",
+    "metadata": {
+      "category": "6",
+      "confidence": "medium"
+    },
+    "node_id": "book:17",
+    "relation": "book_summary",
+    "statement": "Atomic Habits belongs to the 6 catalog."
+  },
+  {
+    "id": "fact-book-18",
+    "metadata": {
+      "category": "6",
+      "confidence": "medium"
+    },
+    "node_id": "book:18",
+    "relation": "book_summary",
+    "statement": "The 7 Habits of Highly Effective People belongs to the 6 catalog."
+  },
+  {
+    "id": "fact-book-2",
+    "metadata": {
+      "category": "1",
+      "confidence": "medium"
+    },
+    "node_id": "book:2",
+    "relation": "book_summary",
+    "statement": "1984 belongs to the 1 catalog."
+  },
+  {
+    "id": "fact-book-3",
+    "metadata": {
+      "category": "1",
+      "confidence": "medium"
+    },
+    "node_id": "book:3",
+    "relation": "book_summary",
+    "statement": "The Great Gatsby belongs to the 1 catalog."
+  },
+  {
+    "id": "fact-book-4",
+    "metadata": {
+      "category": "1",
+      "confidence": "medium"
+    },
+    "node_id": "book:4",
+    "relation": "book_summary",
+    "statement": "To Kill a Mockingbird belongs to the 1 catalog."
+  },
+  {
+    "id": "fact-book-5",
+    "metadata": {
+      "category": "1",
+      "confidence": "medium"
+    },
+    "node_id": "book:5",
+    "relation": "book_summary",
+    "statement": "Pride and Prejudice belongs to the 1 catalog."
+  },
+  {
+    "id": "fact-book-6",
+    "metadata": {
+      "category": "2",
+      "confidence": "medium"
+    },
+    "node_id": "book:6",
+    "relation": "book_summary",
+    "statement": "Dune belongs to the 2 catalog."
+  },
+  {
+    "id": "fact-book-7",
+    "metadata": {
+      "category": "2",
+      "confidence": "medium"
+    },
+    "node_id": "book:7",
+    "relation": "book_summary",
+    "statement": "The Hitchhiker's Guide to the Galaxy belongs to the 2 catalog."
+  },
+  {
+    "id": "fact-book-8",
+    "metadata": {
+      "category": "2",
+      "confidence": "medium"
+    },
+    "node_id": "book:8",
+    "relation": "book_summary",
+    "statement": "Ender's Game belongs to the 2 catalog."
+  },
+  {
+    "id": "fact-book-9",
+    "metadata": {
+      "category": "2",
+      "confidence": "medium"
+    },
+    "node_id": "book:9",
+    "relation": "book_summary",
+    "statement": "Brave New World belongs to the 2 catalog."
+  },
+  {
+    "id": "fact-careful_researcher-sequence",
+    "metadata": {
+      "confidence": "medium",
+      "top_behaviors": [
+        "search",
+        "view_detail",
+        "wishlist"
+      ],
+      "top_categories": [
+        "business",
+        "literature",
+        "high"
+      ]
+    },
+    "node_id": "segment:careful_researcher",
+    "relation": "sequence_summary",
+    "statement": "Careful Researcher rows most often begin with search and center on business, literature."
+  },
+  {
+    "id": "fact-careful_researcher-summary",
+    "metadata": {
+      "confidence": "high",
+      "row_count": 100,
+      "top_categories": [
+        "business",
+        "literature",
+        "high"
+      ]
+    },
+    "node_id": "segment:careful_researcher",
+    "relation": "segment_summary",
+    "statement": "Careful researchers compare details, revisit pages, and prefer structured buying decisions."
+  },
+  {
+    "id": "fact-discount_hunter-sequence",
+    "metadata": {
+      "confidence": "medium",
+      "top_behaviors": [
+        "search",
+        "view_home",
+        "add_to_cart"
+      ],
+      "top_categories": [
+        "business",
+        "literature",
+        "mid"
+      ]
+    },
+    "node_id": "segment:discount_hunter",
+    "relation": "sequence_summary",
+    "statement": "Discount Hunter rows most often begin with search and center on business, literature."
+  },
+  {
+    "id": "fact-discount_hunter-summary",
+    "metadata": {
+      "confidence": "high",
+      "row_count": 100,
+      "top_categories": [
+        "business",
+        "literature",
+        "mid"
+      ]
+    },
+    "node_id": "segment:discount_hunter",
+    "relation": "segment_summary",
+    "statement": "Discount hunters compare pricing, shipping costs, and cancellation flexibility before buying."
+  },
+  {
+    "id": "fact-impulse_buyer-sequence",
+    "metadata": {
+      "confidence": "medium",
+      "top_behaviors": [
+        "view_home",
+        "add_to_cart",
+        "checkout"
+      ],
+      "top_categories": [
+        "business",
+        "literature",
+        "programming"
+      ]
+    },
+    "node_id": "segment:impulse_buyer",
+    "relation": "sequence_summary",
+    "statement": "Impulse Buyer rows most often begin with view home and center on business, literature."
+  },
+  {
+    "id": "fact-impulse_buyer-summary",
+    "metadata": {
+      "confidence": "high",
+      "row_count": 100,
+      "top_categories": [
+        "business",
+        "literature",
+        "programming"
+      ]
+    },
+    "node_id": "segment:impulse_buyer",
+    "relation": "segment_summary",
+    "statement": "Impulse buyers move quickly from browsing to cart and value low-friction checkout."
+  },
+  {
+    "id": "fact-loyal_reader-sequence",
+    "metadata": {
+      "confidence": "medium",
+      "top_behaviors": [
+        "view_home",
+        "view_detail",
+        "review"
+      ],
+      "top_categories": [
+        "literature",
+        "business",
+        "medium"
+      ]
+    },
+    "node_id": "segment:loyal_reader",
+    "relation": "sequence_summary",
+    "statement": "Loyal Reader rows most often begin with view home and center on literature, business."
+  },
+  {
+    "id": "fact-loyal_reader-summary",
+    "metadata": {
+      "confidence": "high",
+      "row_count": 100,
+      "top_categories": [
+        "literature",
+        "business",
+        "medium"
+      ]
+    },
+    "node_id": "segment:loyal_reader",
+    "relation": "segment_summary",
+    "statement": "Loyal readers repeatedly revisit familiar categories and keep reading-focused shopping loops."
+  },
+  {
+    "id": "fact-window_shopper-sequence",
+    "metadata": {
+      "confidence": "medium",
+      "top_behaviors": [
+        "view_home",
+        "search",
+        "view_detail"
+      ],
+      "top_categories": [
+        "business",
+        "literature",
+        "programming"
+      ]
+    },
+    "node_id": "segment:window_shopper",
+    "relation": "sequence_summary",
+    "statement": "Window Shopper rows most often begin with view home and center on business, literature."
+  },
+  {
+    "id": "fact-window_shopper-summary",
+    "metadata": {
+      "confidence": "high",
+      "row_count": 100,
+      "top_categories": [
+        "business",
+        "literature",
+        "programming"
+      ]
+    },
+    "node_id": "segment:window_shopper",
+    "relation": "segment_summary",
+    "statement": "Window shoppers browse widely, compare options, and often leave before checkout."
   }
 ]

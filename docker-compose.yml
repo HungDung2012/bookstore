@@ -1,4 +1,5 @@
 version: '3.8'
+
 services:
   api-gateway:
     build: ./api-gateway
@@ -69,8 +70,12 @@ services:
       REVIEW_SERVICE_URL: http://review-service:8000
       CART_SERVICE_URL: http://cart-service:8000
       USER_SERVICE_URL: http://user-service:8000
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-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}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      NEO4J_URI: ${NEO4J_URI:-bolt://host.docker.internal:7687}
+      NEO4J_USER: ${NEO4J_USER:-neo4j}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-bookstore123}
+      NEO4J_DATABASE: ${NEO4J_DATABASE:-neo4j}
 
   shipping-service:
     build: ./shipping-service
